@@ -134,8 +134,23 @@ static PyObject *new_sysctlobj(int *oid, int nlen) {
 
 	switch(ctltype) {
 		case CTLTYPE_STRING:
+			val[len] = '\0';
 			value = PyString_FromString((char *)val);
 			break;
+		case CTLTYPE_INT:
+			value = PyInt_FromLong( *(int *) val);
+			break;
+		case CTLTYPE_UINT:
+			value = PyInt_FromLong( *(u_int *) val);
+			break;
+		case CTLTYPE_LONG:
+			value = PyLong_FromLong( *(long *) val);
+			break;
+		case CTLTYPE_ULONG:
+			value = PyLong_FromUnsignedLong( *(u_long *) val);
+			break;
+		case CTLTYPE_S64:
+		case CTLTYPE_U64:
 		default:
 			value = PyString_FromString("NOT IMPLEMENTED");
 			break;
