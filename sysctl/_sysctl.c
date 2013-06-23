@@ -150,7 +150,11 @@ static PyObject *new_sysctlobj(int *oid, int nlen) {
 			value = PyLong_FromUnsignedLong( *(u_long *) val);
 			break;
 		case CTLTYPE_S64:
+			value = PyLong_FromLongLong( *(long long *) val);
+			break;
 		case CTLTYPE_U64:
+			value = PyLong_FromUnsignedLongLong( *(unsigned long long *) val);
+			break;
 		default:
 			value = PyString_FromString("NOT IMPLEMENTED");
 			break;
