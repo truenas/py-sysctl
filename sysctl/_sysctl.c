@@ -39,6 +39,18 @@ static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 
 }
 
+static PyObject *Sysctl_repr(Sysctl *self) {
+	static PyObject *format = NULL;
+	PyObject *args, *result;
+	format = PyString_FromString("<Sysctl: %s>");
+
+	args = Py_BuildValue("O", self->name);
+	result = PyString_Format(format, args);
+	Py_DECREF(args);
+
+	return result;
+}
+
 static PyMemberDef Sysctl_members[] = {
 	{"name", T_OBJECT_EX, offsetof(Sysctl, name), READONLY, "name"},
 	{"value", T_OBJECT_EX, offsetof(Sysctl, value), 0, "value"},
@@ -58,7 +70,8 @@ static PyTypeObject SysctlType = {
 	0,                         /*tp_getattr*/
 	0,                         /*tp_setattr*/
 	0,                         /*tp_compare*/
-	0,                         /*tp_repr*/
+	(PyObject *(*)(PyObject *))
+	Sysctl_repr,               /*tp_repr*/
 	0,                         /*tp_as_number*/
 	0,                         /*tp_as_sequence*/
 	0,                         /*tp_as_mapping*/
