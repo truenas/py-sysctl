@@ -3,12 +3,7 @@
 import os
 import sys
 
-try:
-    from distutils.command.build_py import build_py_2to3 as build_py
-except ImportError:
-    from distutils.command.build_py import build_py
-
-from distutils.core import setup, Extension
+from setuptools import setup, Extension
 
 from sysctl import get_version
 
@@ -44,6 +39,7 @@ setup(
         'Operating System :: POSIX :: BSD :: FreeBSD',
         'Programming Language :: Python',
     ],
-    cmdclass={'build_py': build_py},
+    #cmdclass={'build_py': build_py},
     ext_modules=modules,
+    test_suite='nose.collector',
 )
