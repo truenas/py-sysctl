@@ -135,7 +135,10 @@ static u_int sysctl_type(int *oid, int len) {
 
 	j = sizeof(buf);
 	i = sysctl(qoid, len + 2, buf, &j, 0, 0);
-	if(i < 0) exit(-1);
+	if(i < 0) {
+		printf("fatal error sysctl_type\n");
+		exit(-1);
+	}
 
 	return *(u_int *) buf;
 }
@@ -144,7 +147,7 @@ static u_int sysctl_type(int *oid, int len) {
 static PyObject *new_sysctlobj(int *oid, int nlen) {
 
 	char name[BUFSIZ];
-	int qoid[CTL_MAXNAME+2], ctltype;
+	int qoid[CTL_MAXNAME+2], ctltype, rv;
 	u_char *val;
 	size_t j, len;
 	u_int kind;
@@ -156,10 +159,13 @@ static PyObject *new_sysctlobj(int *oid, int nlen) {
 	memcpy(qoid + 2, oid, nlen * sizeof(int));
 
 	j = sizeof(name);
-	sysctl(qoid, nlen + 2, name, &j, 0, 0);
+	rv = sysctl(qoid, nlen + 2, name, &j, 0, 0);
+	if(rv == -1) {
+		printf("error");
+		exit(1);
+	}
 	kind = sysctl_type(oid, nlen);
 	ctltype = kind & CTLTYPE;
-
 	j = 0;
 	sysctl(oid, nlen, 0, &j, 0, 0);
 	j += j; /* double size just to be sure */
@@ -216,13 +222,15 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 	int name1[22], name2[22], i, j, len = 0, oid[CTL_MAXNAME];
 	size_t l1=0, l2;
 	static char *kwlist[] = {"mib", NULL};
-	PyObject *list, *mib=NULL;
+	PyObject *list=NULL, *mib=NULL, *new=NULL;
 
 	if (! PyArg_ParseTupleAndKeywords(args, kwds, "|O", kwlist, &mib))
 		return NULL;
 
 	name1[0] = 0;
 	name1[1] = 2;
+
+	list = PyList_New(0);
 
 	if(mib) {
 		len = name2oid(PyString_AsString(mib), oid);
@@ -231,17 +239,18 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 			printf("mib not found!\n");
 			exit(1);
 		}
-		u_int kind = sysctl_type(oid, len);
-		if((kind & CTLTYPE) == CTLTYPE_NODE) {
-			memcpy(name1+2, oid, len * sizeof(int));
-			l1 = 2 + len;
+		u_int ctltype = sysctl_type(oid, len) & CTLTYPE;
+		if(ctltype == CTLTYPE_NODE) {
+			memcpy(name1 + 2, oid, len * sizeof(int));
+			l1 = len + 2;
+		} else {
+			new = new_sysctlobj(oid, len);
+			PyList_Append(list, new);
 		}
 	} else {
 		name1[2] = 1;
 		l1 = 3;
 	}
-
-	list = PyList_New(0);
 
 	for (;;) {
 		l2 = sizeof(name2);
@@ -258,15 +267,15 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 		if (len < 0 || l2 < (unsigned int)len)
 			return list;
 
-		for (i = 0; i < len; i++)
+		for (i = 0; i < len ; i++)
 			if (name2[i] != oid[i])
 				return list;
 
-		//i = show_var(name2, l2);
-		PyList_Append(list, new_sysctlobj(name2, l2));
+		new = new_sysctlobj(name2, l2);
+		PyList_Append(list, new);
 
-		memcpy(name1+2, name2, l2 * sizeof(int));
-		l1 = 2 + l2;
+		memcpy(name1 + 2, name2, l2 * sizeof(int));
+		l1 = l2 + 2;
 	}
 
 	return list;
