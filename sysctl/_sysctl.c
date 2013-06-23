@@ -12,15 +12,6 @@ typedef struct {
 	/* Type-specific fields go here. */
 } Sysctl;
 
-static PyObject *
-Sysctl_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
-{
-	Sysctl *self;
-
-	self = (Sysctl *)type->tp_alloc(type, 0);
-
-	return (PyObject *)self;
-}
 
 static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 
@@ -91,7 +82,7 @@ static PyTypeObject SysctlType = {
 	0,                         /* tp_dictoffset */
 	(initproc)Sysctl_init,      /* tp_init */
 	0,                         /* tp_alloc */
-	Sysctl_new,                 /* tp_new */
+	//Sysctl_new,                 /* tp_new */
 };
 
 
