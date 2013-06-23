@@ -17,7 +17,7 @@ typedef struct {
 
 static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 
-	PyObject *name=NULL, *value=NULL, *writable=NULL, *tmp;
+	PyObject *name=NULL, *value=NULL, *tmp;
 	static char *kwlist[] = {"name", "value", "writable", "tuneable", NULL};
 	if (! PyArg_ParseTupleAndKeywords(args, kwds, "OO|OO", kwlist, &name, &value, &self->writable, &self->tuneable))
 		return -1;
@@ -178,14 +178,11 @@ static PyObject *new_sysctlobj(int *oid, int nlen) {
 
 }
 
-static PyObject* sysctl_all(PyObject* self, PyObject* args) {
+static PyObject* sysctl_all(PyObject* self) {
 
 	int name1[22], name2[22], i, j, *oid = NULL, len = 0;
 	size_t l1, l2;
 	PyObject *list;
-
-	if(!PyArg_ParseTuple(args, "I", &len))
-		return NULL;
 
 	list = PyList_New(0);
 
@@ -230,7 +227,7 @@ static PyObject* sysctl_all(PyObject* self, PyObject* args) {
 }
 
 static PyMethodDef SysctlMethods[] = {
-	{"sysctl_all", (PyCFunction) sysctl_all, METH_VARARGS, "Sysctl all"},
+	{"sysctl_all", (PyCFunction) sysctl_all, METH_NOARGS, "Sysctl all"},
 	{NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
