@@ -1,5 +1,17 @@
 import os
-import pygit2
+
+try:
+    import pygit2
+    PYGIT2 = True
+except ImportError:
+    PYGIT2 = False
+
+try:
+    from _sysctl import sysctl_all
+except ImportError:
+    pass
+
+__all__ = ['sysctl_all']
 
 VERSION = (0, 0, 1, 'alpha', 0)
 
@@ -21,11 +33,14 @@ def get_version(version=None):
 
     sub = ''
     if version[3] == 'alpha' and version[4] == 0:
-        repo = os.path.realpath(
-            os.path.join(os.path.dirname(__file__), "..")
-        )
-        revision = pygit2.repository.Repository(repo).head.hex[:7]
-        sub = '.dev%s' % revision
+        if PYGIT2:
+            repo = os.path.realpath(
+                os.path.join(os.path.dirname(__file__), "..")
+            )
+            revision = pygit2.repository.Repository(repo).head.hex[:7]
+            sub = '.dev%s' % revision
+        else:
+            sub = '.devUNKNOWN'
 
     elif version[3] != 'final':
         mapping = {'alpha': 'a', 'beta': 'b', 'rc': 'c'}
