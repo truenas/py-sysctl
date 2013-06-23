@@ -7,11 +7,11 @@ except ImportError:
     PYGIT2 = False
 
 try:
-    from _sysctl import Sysctl, sysctl_all
+    from _sysctl import Sysctl, filter
 except ImportError:
     pass
 
-__all__ = ['Sysctl', 'sysctl_all']
+__all__ = ['Sysctl', 'filter']
 
 VERSION = (0, 0, 1, 'alpha', 0)
 

@@ -103,6 +103,26 @@ static PyTypeObject SysctlType = {
 };
 
 
+
+static int
+name2oid(char *name, int *oidp)
+{
+	int oid[2];
+	int i;
+	size_t j;
+
+	oid[0] = 0;
+	oid[1] = 3;
+
+	j = CTL_MAXNAME * sizeof(int);
+	i = sysctl(oid, 2, oidp, &j, name, strlen(name));
+	if (i < 0)
+		return (i);
+	j /= sizeof(int);
+	return (j);
+}
+
+
 static u_int sysctl_type(int *oid, int len) {
 
 	int qoid[CTL_MAXNAME+2], i;
@@ -191,24 +211,38 @@ static PyObject *new_sysctlobj(int *oid, int nlen) {
 
 }
 
-static PyObject* sysctl_all(PyObject* self) {
+static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 
-	int name1[22], name2[22], i, j, *oid = NULL, len = 0;
-	size_t l1, l2;
-	PyObject *list;
+	int name1[22], name2[22], i, j, len = 0, oid[CTL_MAXNAME];
+	size_t l1=0, l2;
+	static char *kwlist[] = {"mib", NULL};
+	PyObject *list, *mib=NULL;
 
-	list = PyList_New(0);
+	if (! PyArg_ParseTupleAndKeywords(args, kwds, "|O", kwlist, &mib))
+		return NULL;
 
 	name1[0] = 0;
 	name1[1] = 2;
-	l1 = 2;
-	if (len) {
-		memcpy(name1+2, oid, len * sizeof(int));
-		l1 += len;
+
+	if(mib) {
+		len = name2oid(PyString_AsString(mib), oid);
+		if(len < 0) {
+			// Fix me, raise exception
+			printf("mib not found!\n");
+			exit(1);
+		}
+		u_int kind = sysctl_type(oid, len);
+		if((kind & CTLTYPE) == CTLTYPE_NODE) {
+			memcpy(name1+2, oid, len * sizeof(int));
+			l1 = 2 + len;
+		}
 	} else {
 		name1[2] = 1;
-		l1++;
+		l1 = 3;
 	}
+
+	list = PyList_New(0);
+
 	for (;;) {
 		l2 = sizeof(name2);
 		j = sysctl(name1, l1, name2, &l2, 0, 0);
@@ -240,7 +274,7 @@ static PyObject* sysctl_all(PyObject* self) {
 }
 
 static PyMethodDef SysctlMethods[] = {
-	{"sysctl_all", (PyCFunction) sysctl_all, METH_NOARGS, "Sysctl all"},
+	{"filter", (PyCFunction) sysctl_filter, METH_KEYWORDS, "Sysctl all"},
 	{NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
