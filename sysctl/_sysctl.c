@@ -9,15 +9,17 @@ typedef struct {
 	PyObject_HEAD;
 	PyObject *name;
 	PyObject *value;
+	PyBoolObject *writable;
+	PyBoolObject *tuneable;
 	/* Type-specific fields go here. */
 } Sysctl;
 
 
 static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 
-	PyObject *name=NULL, *value=NULL, *tmp;
-	static char *kwlist[] = {"name", "value", NULL};
-	if (! PyArg_ParseTupleAndKeywords(args, kwds, "OO", kwlist, &name, &value))
+	PyObject *name=NULL, *value=NULL, *writable=NULL, *tmp;
+	static char *kwlist[] = {"name", "value", "writable", "tuneable", NULL};
+	if (! PyArg_ParseTupleAndKeywords(args, kwds, "OO|OO", kwlist, &name, &value, &self->writable, &self->tuneable))
 		return -1;
 
 	if(name) {
@@ -40,6 +42,8 @@ static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 static PyMemberDef Sysctl_members[] = {
 	{"name", T_OBJECT_EX, offsetof(Sysctl, name), READONLY, "name"},
 	{"value", T_OBJECT_EX, offsetof(Sysctl, value), 0, "value"},
+	{"writable", T_OBJECT_EX, offsetof(Sysctl, writable), READONLY, "Can be written"},
+	{"tuneable", T_OBJECT_EX, offsetof(Sysctl, tuneable), READONLY, "Tuneable"},
 	{NULL}  /* Sentinel */
 };
 
@@ -161,8 +165,14 @@ static PyObject *new_sysctlobj(int *oid, int nlen) {
 	}
 
 	args = Py_BuildValue("()");
-	kwargs = Py_BuildValue("{s:s,s:O}", "name", name, "value", value);
+	kwargs = Py_BuildValue("{s:s,s:O,s:O,s:O}",
+		"name", name,
+		"value", value,
+		"writable", PyBool_FromLong(kind & CTLFLAG_WR),
+		"tuneable", PyBool_FromLong(kind & CTLFLAG_TUN));
 	sysctlObj = PyObject_Call((PyObject *)&SysctlType, args, kwargs);
+
+	free(val);
 
 	return sysctlObj;
 
