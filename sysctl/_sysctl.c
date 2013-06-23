@@ -108,9 +108,10 @@ static PyObject *new_sysctlobj(int *oid, int nlen) {
 
 	char name[BUFSIZ];
 	int qoid[CTL_MAXNAME+2], ctltype;
-	size_t j;
+	u_char *val;
+	size_t j, len;
 	u_int kind;
-	PyObject *sysctlObj, *args, *kwargs;
+	PyObject *sysctlObj, *args, *kwargs, *value;
 
 	bzero(name, BUFSIZ);
 	qoid[0] = 0;
@@ -122,15 +123,28 @@ static PyObject *new_sysctlobj(int *oid, int nlen) {
 	kind = sysctl_type(oid, nlen);
 	ctltype = kind & CTLTYPE;
 
-	args = Py_BuildValue("()");
-	kwargs = Py_BuildValue("{s:s,s:s}", "name", name, "value", "NOT IMPLEMENTED");
-	sysctlObj = PyObject_Call((PyObject *)&SysctlType, args, kwargs);
+	j = 0;
+	sysctl(oid, nlen, 0, &j, 0, 0);
+	j += j; /* double size just to be sure */
+
+	val = malloc(j + 1);
+	len = j;
+
+	sysctl(oid, nlen, val, &len, 0, 0);
 
 	switch(ctltype) {
 		case CTLTYPE_STRING:
+			value = PyString_FromString((char *)val);
+			break;
 		default:
+			value = PyString_FromString("NOT IMPLEMENTED");
 			break;
 	}
+
+	args = Py_BuildValue("()");
+	kwargs = Py_BuildValue("{s:s,s:O}", "name", name, "value", value);
+	sysctlObj = PyObject_Call((PyObject *)&SysctlType, args, kwargs);
+
 	return sysctlObj;
 
 }
