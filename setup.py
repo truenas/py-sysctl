@@ -14,8 +14,9 @@ from sysctl import get_version
 
 modules = [
     Extension(
-        'sysctl/sysctl',
-        sources=['sysctl/sysctl.c'],
+        'sysctl/_sysctl',
+        sources=['sysctl/_sysctl.c'],
+        extra_compile_args=["-Wall"],
     )
 ]
 
