@@ -65,11 +65,11 @@ static PyObject *Sysctl_getvalue(Sysctl *self, void *closure) {
 }
 
 static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
-	if(self->writable == Py_False) {
+	if((PyObject *)self->writable == Py_False) {
 		PyErr_SetString(PyExc_TypeError, "Sysctl is not writable");
 		return -1;
 	}
-	if(self->tuneable == Py_True) {
+	if((PyObject *)self->tuneable == Py_True) {
 		PyErr_SetString(PyExc_TypeError, "Sysctl is a tuneable");
 		return -1;
 	}
