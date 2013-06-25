@@ -51,18 +51,33 @@ static PyObject *Sysctl_repr(Sysctl *self) {
 	return result;
 }
 
-static void Sysctl_dealloc(Sysctl* self)
-{
-    Py_XDECREF(self->name);
-    Py_XDECREF(self->value);
-    Py_XDECREF(self->writable);
-    Py_XDECREF(self->tuneable);
-    self->ob_type->tp_free((PyObject*)self);
+static void Sysctl_dealloc(Sysctl* self) {
+	Py_XDECREF(self->name);
+	Py_XDECREF(self->value);
+	Py_XDECREF(self->writable);
+	Py_XDECREF(self->tuneable);
+	self->ob_type->tp_free((PyObject*)self);
 }
+
+static PyObject *Sysctl_getvalue(Sysctl *self, void *closure) {
+	Py_INCREF(self->value);
+	return self->value;
+}
+
+static PyObject *Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
+	Py_DECREF(self->value);
+	Py_INCREF(value);
+	self->value = value;
+	return 0;
+}
+
+static PyGetSetDef Sysctl_getseters[] = {
+	{"value", (getter)Sysctl_getvalue, (setter)Sysctl_setvalue, "sysctl value", NULL},
+	{NULL}  /* Sentinel */
+};
 
 static PyMemberDef Sysctl_members[] = {
 	{"name", T_OBJECT_EX, offsetof(Sysctl, name), READONLY, "name"},
-	{"value", T_OBJECT_EX, offsetof(Sysctl, value), 0, "value"},
 	{"writable", T_OBJECT_EX, offsetof(Sysctl, writable), READONLY, "Can be written"},
 	{"tuneable", T_OBJECT_EX, offsetof(Sysctl, tuneable), READONLY, "Tuneable"},
 	{NULL}  /* Sentinel */
@@ -99,15 +114,15 @@ static PyTypeObject SysctlType = {
 	0,                         /* tp_weaklistoffset */
 	0,                         /* tp_iter */
 	0,                         /* tp_iternext */
-	0, //Noddy_methods,             /* tp_methods */
-	Sysctl_members,             /* tp_members */
-	0,                         /* tp_getset */
+	0,                         /* tp_methods */
+	Sysctl_members,            /* tp_members */
+	Sysctl_getseters,          /* tp_getset */
 	0,                         /* tp_base */
 	0,                         /* tp_dict */
 	0,                         /* tp_descr_get */
 	0,                         /* tp_descr_set */
 	0,                         /* tp_dictoffset */
-	(initproc)Sysctl_init,      /* tp_init */
+	(initproc)Sysctl_init,     /* tp_init */
 	0,                         /* tp_alloc */
 	//Sysctl_new,                 /* tp_new */
 };
