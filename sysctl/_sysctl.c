@@ -51,6 +51,15 @@ static PyObject *Sysctl_repr(Sysctl *self) {
 	return result;
 }
 
+static void Sysctl_dealloc(Sysctl* self)
+{
+    Py_XDECREF(self->name);
+    Py_XDECREF(self->value);
+    Py_XDECREF(self->writable);
+    Py_XDECREF(self->tuneable);
+    self->ob_type->tp_free((PyObject*)self);
+}
+
 static PyMemberDef Sysctl_members[] = {
 	{"name", T_OBJECT_EX, offsetof(Sysctl, name), READONLY, "name"},
 	{"value", T_OBJECT_EX, offsetof(Sysctl, value), 0, "value"},
@@ -65,7 +74,8 @@ static PyTypeObject SysctlType = {
 	"Sysctl",                  /*tp_name*/
 	sizeof(Sysctl),            /*tp_basicsize*/
 	0,                         /*tp_itemsize*/
-	0,                         /*tp_dealloc*/
+	(destructor)
+	Sysctl_dealloc,            /*tp_dealloc*/
 	0,                         /*tp_print*/
 	0,                         /*tp_getattr*/
 	0,                         /*tp_setattr*/
