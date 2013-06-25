@@ -64,7 +64,15 @@ static PyObject *Sysctl_getvalue(Sysctl *self, void *closure) {
 	return self->value;
 }
 
-static PyObject *Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
+static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
+	if(self->writable == Py_False) {
+		PyErr_SetString(PyExc_TypeError, "Sysctl is not writable");
+		return -1;
+	}
+	if(self->tuneable == Py_True) {
+		PyErr_SetString(PyExc_TypeError, "Sysctl is a tuneable");
+		return -1;
+	}
 	Py_DECREF(self->value);
 	Py_INCREF(value);
 	self->value = value;
