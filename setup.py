@@ -35,7 +35,7 @@ setup(
     classifiers=[
         'Development Status :: 1 - Planning',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: BSD License'
+        'License :: OSI Approved :: BSD License',
         'Operating System :: POSIX :: BSD :: FreeBSD',
         'Programming Language :: Python',
     ],
