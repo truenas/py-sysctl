@@ -11,6 +11,7 @@ typedef struct {
 	PyObject *value;
 	PyBoolObject *writable;
 	PyBoolObject *tuneable;
+	PyListObject *oid;
 	unsigned int type;
 	/* Type-specific fields go here. */
 } Sysctl;
@@ -19,8 +20,8 @@ typedef struct {
 static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 
 	PyObject *name=NULL, *value=NULL, *tmp;
-	static char *kwlist[] = {"name", "value", "writable", "tuneable", "type", NULL};
-	if (! PyArg_ParseTupleAndKeywords(args, kwds, "OO|OOI", kwlist, &name, &value, &self->writable, &self->tuneable, &self->type))
+	static char *kwlist[] = {"name", "value", "writable", "tuneable", "type", "oid", NULL};
+	if (! PyArg_ParseTupleAndKeywords(args, kwds, "OO|OOIO", kwlist, &name, &value, &self->writable, &self->tuneable, &self->type, &self->oid))
 		return -1;
 
 	if(name) {
@@ -57,6 +58,7 @@ static void Sysctl_dealloc(Sysctl* self) {
 	Py_XDECREF(self->value);
 	Py_XDECREF(self->writable);
 	Py_XDECREF(self->tuneable);
+	Py_XDECREF(self->oid);
 	self->ob_type->tp_free((PyObject*)self);
 }
 
@@ -66,6 +68,9 @@ static PyObject *Sysctl_getvalue(Sysctl *self, void *closure) {
 }
 
 static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
+	void *newval = NULL;
+	size_t newsize = 0;
+
 	if((PyObject *)self->writable == Py_False) {
 		PyErr_SetString(PyExc_TypeError, "Sysctl is not writable");
 		return -1;
@@ -74,6 +79,57 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 		PyErr_SetString(PyExc_TypeError, "Sysctl is a tuneable");
 		return -1;
 	}
+	switch(self->type) {
+		case CTLTYPE_INT:
+		case CTLTYPE_UINT:
+			if(value->ob_type != &PyInt_Type) {
+				PyErr_SetString(PyExc_TypeError, "Invalid type");
+				return -1;
+			}
+			newval = malloc(sizeof(int));
+			newsize = sizeof(int);
+			*((int *) newval) = PyInt_AsLong(value);
+			break;
+		case CTLTYPE_LONG:
+		case CTLTYPE_ULONG:
+			if(value->ob_type != &PyLong_Type) {
+				PyErr_SetString(PyExc_TypeError, "Invalid type");
+				return -1;
+			}
+			newval = malloc(sizeof(long));
+			newsize = sizeof(long);
+			*((long *) newval) = PyLong_AsLong(value);
+			break;
+		case CTLTYPE_S64:
+		case CTLTYPE_U64:
+			if(value->ob_type != &PyLong_Type) {
+				PyErr_SetString(PyExc_TypeError, "Invalid type");
+				return -1;
+			}
+			newval = malloc(sizeof(long long));
+			newsize = sizeof(long long);
+			*((long long *) newval) = PyLong_AsLongLong(value);
+			break;
+		default:
+			break;
+	}
+
+	if(newval) {
+		int *oid, i=0;
+		ssize_t size;
+		size = PyList_Size((PyObject *) self->oid);
+		oid = calloc(sizeof(int), size);
+		for(i=0;i<size;i++) {
+			oid[i] = (u_int) ((PyIntObject *)self->oid->ob_item[i])->ob_ival;
+		}
+		if(sysctl(oid, size, 0, 0, newval, newsize) == -1) {
+
+			PyErr_SetString(PyExc_TypeError, "Failed to set sysctl");
+			return -1;
+		}
+		free(newval);
+	}
+
 	Py_DECREF(self->value);
 	Py_INCREF(value);
 	self->value = value;
@@ -89,6 +145,7 @@ static PyMemberDef Sysctl_members[] = {
 	{"name", T_OBJECT_EX, offsetof(Sysctl, name), READONLY, "name"},
 	{"writable", T_OBJECT_EX, offsetof(Sysctl, writable), READONLY, "Can be written"},
 	{"tuneable", T_OBJECT_EX, offsetof(Sysctl, tuneable), READONLY, "Tuneable"},
+	{"oid", T_OBJECT_EX, offsetof(Sysctl, oid), READONLY, "OID MIB"},
 	{"type", T_UINT, offsetof(Sysctl, type), READONLY, "Data type of sysctl"},
 	{NULL}  /* Sentinel */
 };
@@ -186,7 +243,7 @@ static PyObject *new_sysctlobj(int *oid, int nlen) {
 	u_char *val;
 	size_t j, len;
 	u_int kind;
-	PyObject *sysctlObj, *args, *kwargs, *value;
+	PyObject *sysctlObj, *args, *kwargs, *value, *oidobj;
 
 	bzero(name, BUFSIZ);
 	qoid[0] = 0;
@@ -238,13 +295,20 @@ static PyObject *new_sysctlobj(int *oid, int nlen) {
 			break;
 	}
 
+	int i;
+	oidobj = PyList_New(0);
+	for(i=0;i<nlen;i++) {
+		PyList_Append(oidobj, PyInt_FromLong(oid[i]));
+	}
+	printf("nlen %d\n", nlen);
 	args = Py_BuildValue("()");
-	kwargs = Py_BuildValue("{s:s,s:O,s:O,s:O,s:I}",
+	kwargs = Py_BuildValue("{s:s,s:O,s:O,s:O,s:I,s:O}",
 		"name", name,
 		"value", value,
 		"writable", PyBool_FromLong(kind & CTLFLAG_WR),
 		"tuneable", PyBool_FromLong(kind & CTLFLAG_TUN),
-		"type", (unsigned int )ctltype);
+		"type", (unsigned int )ctltype,
+		"oid", oidobj);
 	sysctlObj = PyObject_Call((PyObject *)&SysctlType, args, kwargs);
 
 	free(val);
