@@ -13,7 +13,6 @@ typedef struct {
 	PyBoolObject *tuneable;
 	PyListObject *oid;
 	unsigned int type;
-	/* Type-specific fields go here. */
 } Sysctl;
 
 
@@ -373,6 +372,10 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 		kind = sysctl_type(name2, l2);
 		ctltype = kind & CTLTYPE;
 		if( (PyObject *)writable == Py_True && (kind & CTLFLAG_WR) == 0 ) {
+			memcpy(name1 + 2, name2, l2 * sizeof(int));
+			l1 = l2 + 2;
+			continue;
+		} else if( (PyObject *)writable == Py_False && (kind & CTLFLAG_WR) > 0 ) {
 			memcpy(name1 + 2, name2, l2 * sizeof(int));
 			l1 = l2 + 2;
 			continue;
