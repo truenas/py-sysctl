@@ -8,4 +8,5 @@ class TestSysctlANum(SysctlTestBase):
         numLib = len(sysctl.filter())
         numCmd = int(self.command("/sbin/sysctl -Na|wc -l").strip())
 
+        print numLib, numCmd
         assert numLib == numCmd
