@@ -18,9 +18,9 @@ typedef struct {
 
 static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 
-	PyObject *name=NULL, *value=NULL, *tmp;
+	PyObject *name=NULL, *value=NULL, *writable=NULL, *tuneable=NULL, *oid=NULL, *tmp;
 	static char *kwlist[] = {"name", "value", "writable", "tuneable", "type", "oid", NULL};
-	if (! PyArg_ParseTupleAndKeywords(args, kwds, "OO|OOIO", kwlist, &name, &value, &self->writable, &self->tuneable, &self->type, &self->oid))
+	if (! PyArg_ParseTupleAndKeywords(args, kwds, "OO|OOIO", kwlist, &name, &value, &writable, &tuneable, &self->type, &oid))
 		return -1;
 
 	if(name) {
@@ -36,6 +36,27 @@ static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 		Py_XDECREF(tmp);
 	}
 
+	if(writable) {
+		tmp = self->writable;
+		Py_INCREF(writable);
+		self->writable = writable;
+		Py_XDECREF(tmp);
+	}
+
+	if(tuneable) {
+		tmp = self->tuneable;
+		Py_INCREF(tuneable);
+		self->tuneable = tuneable;
+		Py_XDECREF(tmp);
+	}
+
+	if(oid) {
+		tmp = self->oid;
+		Py_INCREF(oid);
+		self->oid = oid;
+		Py_XDECREF(tmp);
+	}
+
 	return 0;
 
 }
@@ -48,6 +69,7 @@ static PyObject *Sysctl_repr(Sysctl *self) {
 	args = Py_BuildValue("O", self->name);
 	result = PyString_Format(format, args);
 	Py_DECREF(args);
+	Py_DECREF(format);
 
 	return result;
 }
@@ -124,9 +146,12 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 		if(sysctl(oid, size, 0, 0, newval, newsize) == -1) {
 
 			PyErr_SetString(PyExc_TypeError, "Failed to set sysctl");
+			free(newval);
+			free(oid);
 			return -1;
 		}
 		free(newval);
+		free(oid);
 	}
 
 	Py_DECREF(self->value);
@@ -241,7 +266,7 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 	int qoid[CTL_MAXNAME+2], ctltype, rv;
 	u_char *val;
 	size_t j, len;
-	PyObject *sysctlObj, *args, *kwargs, *value, *oidobj;
+	PyObject *sysctlObj, *args, *kwargs, *value, *oidobj, *writable, *tuneable;
 
 	bzero(name, BUFSIZ);
 	qoid[0] = 0;
@@ -297,15 +322,23 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 	for(i=0;i<nlen;i++) {
 		PyList_Append(oidobj, PyInt_FromLong(oid[i]));
 	}
+	writable = PyBool_FromLong(kind & CTLFLAG_WR);
+	tuneable = PyBool_FromLong(kind & CTLFLAG_TUN);
 	args = Py_BuildValue("()");
 	kwargs = Py_BuildValue("{s:s,s:O,s:O,s:O,s:I,s:O}",
 		"name", name,
 		"value", value,
-		"writable", PyBool_FromLong(kind & CTLFLAG_WR),
-		"tuneable", PyBool_FromLong(kind & CTLFLAG_TUN),
+		"writable", writable,
+		"tuneable", tuneable,
 		"type", (unsigned int )ctltype,
 		"oid", oidobj);
 	sysctlObj = PyObject_Call((PyObject *)&SysctlType, args, kwargs);
+	Py_DECREF(args);
+	Py_DECREF(kwargs);
+	Py_DECREF(oidobj);
+	Py_DECREF(value);
+	Py_DECREF(writable);
+	Py_DECREF(tuneable);
 
 	free(val);
 
@@ -383,10 +416,13 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 
 		new = new_sysctlobj(name2, l2, kind);
 		PyList_Append(list, new);
+		Py_DECREF(new);
 
 		memcpy(name1 + 2, name2, l2 * sizeof(int));
 		l1 = l2 + 2;
 	}
+	Py_DECREF(mib);
+	Py_DECREF(writable);
 
 	return list;
 
