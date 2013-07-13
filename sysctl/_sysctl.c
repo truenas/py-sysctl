@@ -24,36 +24,36 @@ static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 		return -1;
 
 	if(name) {
-		tmp = self->name;
+		tmp = (PyObject *) self->name;
 		Py_INCREF(name);
 		self->name = name;
 		Py_XDECREF(tmp);
 	}
 	if(value) {
-		tmp = self->value;
+		tmp = (PyObject *) self->value;
 		Py_INCREF(value);
 		self->value = value;
 		Py_XDECREF(tmp);
 	}
 
 	if(writable) {
-		tmp = self->writable;
+		tmp = (PyObject *) self->writable;
 		Py_INCREF(writable);
-		self->writable = writable;
+		self->writable = (PyBoolObject *) writable;
 		Py_XDECREF(tmp);
 	}
 
 	if(tuneable) {
-		tmp = self->tuneable;
+		tmp = (PyObject *) self->tuneable;
 		Py_INCREF(tuneable);
-		self->tuneable = tuneable;
+		self->tuneable = (PyBoolObject *) tuneable;
 		Py_XDECREF(tmp);
 	}
 
 	if(oid) {
-		tmp = self->oid;
+		tmp = (PyObject *) self->oid;
 		Py_INCREF(oid);
-		self->oid = oid;
+		self->oid = (PyListObject *) oid;
 		Py_XDECREF(tmp);
 	}
 
