@@ -30,7 +30,7 @@ setup(
         )
     ).read(),
     keywords='sysctl',
-    packages=('sysctl', ),
+    packages=('sysctl', 'sysctl/tests'),
     platforms='any',
     classifiers=[
         'Development Status :: 3 - Alpha',
