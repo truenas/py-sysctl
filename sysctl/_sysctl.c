@@ -121,8 +121,12 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 			newsize = sizeof(long);
 			*((long *) newval) = PyLong_AsLong(value);
 			break;
+#ifdef CTLTYPE_S64
 		case CTLTYPE_S64:
 		case CTLTYPE_U64:
+#else
+		case CTLTYPE_QUAD:
+#endif
 			if(value->ob_type != &PyLong_Type) {
 				PyErr_SetString(PyExc_TypeError, "Invalid type");
 				return -1;
@@ -306,12 +310,18 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 		case CTLTYPE_ULONG:
 			value = PyLong_FromUnsignedLong( *(u_long *) val);
 			break;
+#ifdef CTLTYPE_S64
 		case CTLTYPE_S64:
 			value = PyLong_FromLongLong( *(long long *) val);
 			break;
 		case CTLTYPE_U64:
 			value = PyLong_FromUnsignedLongLong( *(unsigned long long *) val);
 			break;
+#else
+		case CTLTYPE_QUAD:
+			value = PyLong_FromLongLong( *(long long *) val);
+			break;
+#endif
 		default:
 			value = PyString_FromString("NOT IMPLEMENTED");
 			break;
@@ -454,12 +464,16 @@ init_sysctl(void) {
 	PyModule_AddIntConstant(m, "CTLTYPE_NODE", CTLTYPE_NODE);
 	PyModule_AddIntConstant(m, "CTLTYPE_INT", CTLTYPE_INT);
 	PyModule_AddIntConstant(m, "CTLTYPE_STRING", CTLTYPE_STRING);
-	PyModule_AddIntConstant(m, "CTLTYPE_S64", CTLTYPE_S64);
 	PyModule_AddIntConstant(m, "CTLTYPE_OPAQUE", CTLTYPE_OPAQUE);
 	PyModule_AddIntConstant(m, "CTLTYPE_STRUCT", CTLTYPE_STRUCT);
 	PyModule_AddIntConstant(m, "CTLTYPE_UINT", CTLTYPE_UINT);
 	PyModule_AddIntConstant(m, "CTLTYPE_LONG", CTLTYPE_LONG);
 	PyModule_AddIntConstant(m, "CTLTYPE_ULONG", CTLTYPE_ULONG);
+#ifdef CTLTYPE_S64
+	PyModule_AddIntConstant(m, "CTLTYPE_S64", CTLTYPE_S64);
 	PyModule_AddIntConstant(m, "CTLTYPE_U64", CTLTYPE_U64);
+#else
+	PyModule_AddIntConstant(m, "CTLTYPE_QUAD", CTLTYPE_QUAD);
+#endif
 
 }
