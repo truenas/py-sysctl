@@ -263,10 +263,10 @@ static u_int sysctl_type(int *oid, int len) {
 static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 
 	char name[BUFSIZ];
-	int qoid[CTL_MAXNAME+2], ctltype, rv;
+	int qoid[CTL_MAXNAME+2], ctltype, rv, i;
 	u_char *val;
 	size_t j, len;
-	PyObject *sysctlObj, *args, *kwargs, *value, *oidobj, *writable, *tuneable;
+	PyObject *sysctlObj, *args, *kwargs, *value, *oidobj, *oidentry, *writable, *tuneable;
 
 	bzero(name, BUFSIZ);
 	qoid[0] = 0;
@@ -317,10 +317,11 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 			break;
 	}
 
-	int i;
 	oidobj = PyList_New(0);
 	for(i=0;i<nlen;i++) {
-		PyList_Append(oidobj, PyInt_FromLong(oid[i]));
+		oidentry = PyInt_FromLong(oid[i]);
+		PyList_Append(oidobj, oidentry);
+		Py_DECREF(oidentry);
 	}
 	writable = PyBool_FromLong(kind & CTLFLAG_WR);
 	tuneable = PyBool_FromLong(kind & CTLFLAG_TUN);
