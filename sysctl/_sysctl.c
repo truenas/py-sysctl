@@ -450,4 +450,16 @@ init_sysctl(void) {
 	Py_INCREF(&SysctlType);
 	PyModule_AddObject(m, "Sysctl", (PyObject *)&SysctlType);
 
+	PyModule_AddIntConstant(m, "CTLTYPE", CTLTYPE);
+	PyModule_AddIntConstant(m, "CTLTYPE_NODE", CTLTYPE_NODE);
+	PyModule_AddIntConstant(m, "CTLTYPE_INT", CTLTYPE_INT);
+	PyModule_AddIntConstant(m, "CTLTYPE_STRING", CTLTYPE_STRING);
+	PyModule_AddIntConstant(m, "CTLTYPE_S64", CTLTYPE_S64);
+	PyModule_AddIntConstant(m, "CTLTYPE_OPAQUE", CTLTYPE_OPAQUE);
+	PyModule_AddIntConstant(m, "CTLTYPE_STRUCT", CTLTYPE_STRUCT);
+	PyModule_AddIntConstant(m, "CTLTYPE_UINT", CTLTYPE_UINT);
+	PyModule_AddIntConstant(m, "CTLTYPE_LONG", CTLTYPE_LONG);
+	PyModule_AddIntConstant(m, "CTLTYPE_ULONG", CTLTYPE_ULONG);
+	PyModule_AddIntConstant(m, "CTLTYPE_U64", CTLTYPE_U64);
+
 }
