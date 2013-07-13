@@ -1,5 +1,3 @@
-.. -*-restructuredtext-*-
-
 ============
 py-sysctl
 ============
