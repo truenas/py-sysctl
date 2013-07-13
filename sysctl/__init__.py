@@ -37,7 +37,10 @@ def get_version(version=None):
             repo = os.path.realpath(
                 os.path.join(os.path.dirname(__file__), "..")
             )
-            revision = pygit2.repository.Repository(repo).head.hex[:7]
+            try:
+                revision = pygit2.repository.Repository(repo).head.hex[:7]
+            except KeyError:
+                revision = 'UNKNOWN'
             sub = '.dev%s' % revision
         else:
             sub = '.devUNKNOWN'
