@@ -7,7 +7,7 @@ except ImportError:
     PYGIT2 = False
 
 try:
-    from _sysctl import *
+    from ._sysctl import *
 except ImportError:
     pass
 
