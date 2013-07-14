@@ -5,13 +5,31 @@
 #include <Python.h>
 #include <structmember.h>
 
+struct module_state {
+    PyObject *error;
+};
+
+#if PY_MAJOR_VERSION >= 3
+#define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
+#else
+#define GETSTATE(m) (&_state)
+static struct module_state _state;
+#endif
+
+static PyObject *
+error_out(PyObject *m) {
+	struct module_state *st = GETSTATE(m);
+	PyErr_SetString(st->error, "something bad happened");
+	return NULL;
+}
+
 typedef struct {
 	PyObject_HEAD;
 	PyObject *name;
 	PyObject *value;
-	PyBoolObject *writable;
-	PyBoolObject *tuneable;
-	PyListObject *oid;
+	PyObject *writable;
+	PyObject *tuneable;
+	PyObject *oid;
 	unsigned int type;
 } Sysctl;
 
@@ -24,36 +42,36 @@ static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 		return -1;
 
 	if(name) {
-		tmp = (PyObject *) self->name;
+		tmp = self->name;
 		Py_INCREF(name);
 		self->name = name;
 		Py_XDECREF(tmp);
 	}
 	if(value) {
-		tmp = (PyObject *) self->value;
+		tmp = self->value;
 		Py_INCREF(value);
 		self->value = value;
 		Py_XDECREF(tmp);
 	}
 
 	if(writable) {
-		tmp = (PyObject *) self->writable;
+		tmp = self->writable;
 		Py_INCREF(writable);
-		self->writable = (PyBoolObject *) writable;
+		self->writable = writable;
 		Py_XDECREF(tmp);
 	}
 
 	if(tuneable) {
-		tmp = (PyObject *) self->tuneable;
+		tmp = self->tuneable;
 		Py_INCREF(tuneable);
-		self->tuneable = (PyBoolObject *) tuneable;
+		self->tuneable = tuneable;
 		Py_XDECREF(tmp);
 	}
 
 	if(oid) {
-		tmp = (PyObject *) self->oid;
+		tmp = self->oid;
 		Py_INCREF(oid);
-		self->oid = (PyListObject *) oid;
+		self->oid = oid;
 		Py_XDECREF(tmp);
 	}
 
@@ -64,10 +82,10 @@ static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 static PyObject *Sysctl_repr(Sysctl *self) {
 	static PyObject *format = NULL;
 	PyObject *args, *result;
-	format = PyString_FromString("<Sysctl: %s>");
+	format = PyUnicode_FromString("<Sysctl: %s>");
 
 	args = Py_BuildValue("O", self->name);
-	result = PyString_Format(format, args);
+	result = PyUnicode_Format(format, args);
 	Py_DECREF(args);
 	Py_DECREF(format);
 
@@ -80,7 +98,7 @@ static void Sysctl_dealloc(Sysctl* self) {
 	Py_XDECREF(self->writable);
 	Py_XDECREF(self->tuneable);
 	Py_XDECREF(self->oid);
-	self->ob_type->tp_free((PyObject*)self);
+	Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static PyObject *Sysctl_getvalue(Sysctl *self, void *closure) {
@@ -103,13 +121,13 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 	switch(self->type) {
 		case CTLTYPE_INT:
 		case CTLTYPE_UINT:
-			if(value->ob_type != &PyInt_Type) {
+			if(value->ob_type != &PyLong_Type) {
 				PyErr_SetString(PyExc_TypeError, "Invalid type");
 				return -1;
 			}
 			newval = malloc(sizeof(int));
 			newsize = sizeof(int);
-			*((int *) newval) = PyInt_AsLong(value);
+			*((int *) newval) = PyLong_AsLong(value);
 			break;
 		case CTLTYPE_LONG:
 		case CTLTYPE_ULONG:
@@ -145,7 +163,7 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 		size = PyList_Size((PyObject *) self->oid);
 		oid = calloc(sizeof(int), size);
 		for(i=0;i<size;i++) {
-			oid[i] = (u_int) ((PyIntObject *)self->oid->ob_item[i])->ob_ival;
+			oid[i] = (u_int) PyLong_AsLong(PyList_GetItem(self->oid, i));
 		}
 		if(sysctl(oid, size, 0, 0, newval, newsize) == -1) {
 
@@ -179,8 +197,7 @@ static PyMemberDef Sysctl_members[] = {
 };
 
 static PyTypeObject SysctlType = {
-	PyObject_HEAD_INIT(NULL)
-	0,                         /*ob_size*/
+	PyVarObject_HEAD_INIT(NULL, 0)
 	"Sysctl",                  /*tp_name*/
 	sizeof(Sysctl),            /*tp_basicsize*/
 	0,                         /*tp_itemsize*/
@@ -296,13 +313,13 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 	switch(ctltype) {
 		case CTLTYPE_STRING:
 			val[len] = '\0';
-			value = PyString_FromString((char *)val);
+			value = PyUnicode_FromString((char *)val);
 			break;
 		case CTLTYPE_INT:
-			value = PyInt_FromLong( *(int *) val);
+			value = PyLong_FromLong( *(int *) val);
 			break;
 		case CTLTYPE_UINT:
-			value = PyInt_FromLong( *(u_int *) val);
+			value = PyLong_FromLong( *(u_int *) val);
 			break;
 		case CTLTYPE_LONG:
 			value = PyLong_FromLong( *(long *) val);
@@ -323,13 +340,13 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 			break;
 #endif
 		default:
-			value = PyString_FromString("NOT IMPLEMENTED");
+			value = PyUnicode_FromString("NOT IMPLEMENTED");
 			break;
 	}
 
 	oidobj = PyList_New(0);
 	for(i=0;i<nlen;i++) {
-		oidentry = PyInt_FromLong(oid[i]);
+		oidentry = PyLong_FromLong(oid[i]);
 		PyList_Append(oidobj, oidentry);
 		Py_DECREF(oidentry);
 	}
@@ -374,7 +391,7 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 	list = PyList_New(0);
 
 	if(mib) {
-		len = name2oid(PyString_AsString(mib), oid);
+		len = name2oid(PyBytes_AsString(PyUnicode_AsASCIIString(mib)), oid);
 		if(len < 0) {
 			// Fix me, raise exception
 			printf("mib not found!\n");
@@ -440,22 +457,68 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 }
 
 static PyMethodDef SysctlMethods[] = {
-	{"filter", (PyCFunction) sysctl_filter, METH_KEYWORDS, "Sysctl all"},
-	{NULL, NULL, 0, NULL}        /* Sentinel */
+	{"filter", (PyCFunction) sysctl_filter, METH_VARARGS|METH_KEYWORDS, "Sysctl all"},
+	{"error_out", (PyCFunction) error_out, METH_NOARGS, NULL},
+	{NULL, NULL}        /* Sentinel */
 };
 
+
+#if PY_MAJOR_VERSION >= 3
+
+static int sysctl_traverse(PyObject *m, visitproc visit, void *arg) {
+	Py_VISIT(GETSTATE(m)->error);
+	return 0;
+}
+
+static int sysctl_clear(PyObject *m) {
+	Py_CLEAR(GETSTATE(m)->error);
+	return 0;
+}
+
+
+static struct PyModuleDef moduledef = {
+	PyModuleDef_HEAD_INIT,
+	"_sysctl",
+	NULL,
+	sizeof(struct module_state),
+	SysctlMethods,
+	NULL,
+	sysctl_traverse,
+	sysctl_clear,
+	NULL
+};
+
+#define INITERROR return NULL
+
+PyObject *
+PyInit__sysctl(void)
+
+#else
+#define INITERROR return
+
 PyMODINIT_FUNC
-init_sysctl(void) {
+init_sysctl(void)
+#endif
+{
 	PyObject *m;
-
-
 	SysctlType.tp_new = PyType_GenericNew;
 	if (PyType_Ready(&SysctlType) < 0)
-		return;
+		INITERROR;
 
+#if PY_MAJOR_VERSION >= 3
+	m = PyModule_Create(&moduledef);
+#else
 	m = Py_InitModule("_sysctl", SysctlMethods);
+#endif
 	if (m == NULL)
-		return;
+		INITERROR;
+
+	struct module_state *st = GETSTATE(m);
+	st->error = PyErr_NewException("_sysctl.Error", NULL, NULL);
+	if (st->error == NULL) {
+		Py_DECREF(m);
+		INITERROR;
+	}
 
 	Py_INCREF(&SysctlType);
 	PyModule_AddObject(m, "Sysctl", (PyObject *)&SysctlType);
@@ -474,6 +537,10 @@ init_sysctl(void) {
 	PyModule_AddIntConstant(m, "CTLTYPE_U64", CTLTYPE_U64);
 #else
 	PyModule_AddIntConstant(m, "CTLTYPE_QUAD", CTLTYPE_QUAD);
+#endif
+
+#if PY_MAJOR_VERSION >= 3
+	return m;
 #endif
 
 }

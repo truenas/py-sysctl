@@ -18,7 +18,7 @@ class TestSysctlWritable(SysctlTestBase):
             if ctl.name not in cmdNames:
                 notIn.append(ctl.name)
 
-        print notIn
+        print(notIn)
         assert len(notIn) == 0
 
     def test_sysctl_writable_false(self):
@@ -43,5 +43,5 @@ class TestSysctlWritable(SysctlTestBase):
             if ctl.name not in cmdNames:
                 notIn.append(ctl.name)
 
-        print notIn
+        print(notIn)
         assert len(notIn) == 0

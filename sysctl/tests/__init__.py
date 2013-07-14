@@ -13,4 +13,4 @@ class SysctlTestBase(object):
         stdout = proc.communicate()[0]
         if proc.returncode != 0:
             raise AssertionError
-        return stdout
+        return stdout.decode('utf8')
