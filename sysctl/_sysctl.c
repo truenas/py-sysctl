@@ -379,32 +379,32 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 	int name1[22], name2[22], i, j, len = 0, oid[CTL_MAXNAME];
 	size_t l1=0, l2;
 	static char *kwlist[] = {"mib", "writable", NULL};
-	PyObject *list=NULL, *mib=NULL, *writable=NULL, *new=NULL;
+	char *mib;
+	PyObject *list=NULL, *writable=NULL, *new=NULL;
 	u_int kind, ctltype;
 
-	if (! PyArg_ParseTupleAndKeywords(args, kwds, "|OO", kwlist, &mib, &writable))
+	if (! PyArg_ParseTupleAndKeywords(args, kwds, "|zO", kwlist, &mib, &writable))
 		return NULL;
 
 	name1[0] = 0;
 	name1[1] = 2;
 
 	list = PyList_New(0);
-
-	if(mib) {
-		len = name2oid(PyBytes_AsString(PyUnicode_AsASCIIString(mib)), oid);
+	if(mib != NULL && mib[0] != '\n' && strlen(mib) > 0) {
+		len = name2oid(mib, oid);
 		if(len < 0) {
-			// Fix me, raise exception
-			printf("mib not found!\n");
-			exit(1);
-		}
-		kind = sysctl_type(oid, len);
-		ctltype = kind & CTLTYPE;
-		if(ctltype == CTLTYPE_NODE) {
-			memcpy(name1 + 2, oid, len * sizeof(int));
-			l1 = len + 2;
+			//PyErr_SetString(PyExc_TypeError, "mib not found");
+			//return -1;
 		} else {
-			new = new_sysctlobj(oid, len, kind);
-			PyList_Append(list, new);
+			kind = sysctl_type(oid, len);
+			ctltype = kind & CTLTYPE;
+			if(ctltype == CTLTYPE_NODE) {
+				memcpy(name1 + 2, oid, len * sizeof(int));
+				l1 = len + 2;
+			} else {
+				new = new_sysctlobj(oid, len, kind);
+				PyList_Append(list, new);
+			}
 		}
 	} else {
 		name1[2] = 1;
@@ -449,7 +449,7 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 		memcpy(name1 + 2, name2, l2 * sizeof(int));
 		l1 = l2 + 2;
 	}
-	Py_DECREF(mib);
+	free(mib);
 	Py_DECREF(writable);
 
 	return list;
