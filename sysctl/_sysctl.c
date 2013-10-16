@@ -34,6 +34,16 @@ typedef struct {
 } Sysctl;
 
 
+static int ctl_size[CTLTYPE+1] = {
+	[CTLTYPE_INT] = sizeof(int),
+	[CTLTYPE_UINT] = sizeof(u_int),
+	[CTLTYPE_LONG] = sizeof(long),
+	[CTLTYPE_ULONG] = sizeof(u_long),
+	[CTLTYPE_S64] = sizeof(int64_t),
+	[CTLTYPE_U64] = sizeof(int64_t),
+};
+
+
 static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
 
 	PyObject *name=NULL, *value=NULL, *writable=NULL, *tuneable=NULL, *oid=NULL, *tmp;
@@ -285,8 +295,8 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 
 	char name[BUFSIZ];
 	int qoid[CTL_MAXNAME+2], ctltype, rv, i;
-	u_char *val;
-	size_t j, len;
+	u_char *val, *p;
+	size_t j, len, intlen;
 	PyObject *sysctlObj, *args, *kwargs, *value, *oidobj, *oidentry, *writable, *tuneable;
 
 	bzero(name, BUFSIZ);
@@ -307,32 +317,102 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 
 	val = malloc(j + 1);
 	len = j;
+	p = val;
+	intlen = ctl_size[ctltype];
 
 	sysctl(oid, nlen, val, &len, 0, 0);
 
+	printf("aa %d\n", ctltype);
 	switch(ctltype) {
 		case CTLTYPE_STRING:
 			val[len] = '\0';
 			value = PyUnicode_FromString((char *)val);
 			break;
 		case CTLTYPE_INT:
-			value = PyLong_FromLong( *(int *) val);
+
+			if (len >= intlen) {
+				value = PyList_New(0);
+				while (len >= intlen) {
+					PyObject *oidentry = PyLong_FromLong( *(int *) p);
+					PyList_Append(value, oidentry);
+					Py_DECREF(oidentry);
+					len -= intlen;
+					p += intlen;
+				}
+			} else {
+				value = PyLong_FromLong( *(int *) val);
+			}
 			break;
 		case CTLTYPE_UINT:
-			value = PyLong_FromLong( *(u_int *) val);
+			if (len >= intlen) {
+				value = PyList_New(0);
+				while (len >= intlen) {
+					PyObject *oidentry = PyLong_FromLong( *(u_int *) p);
+					PyList_Append(value, oidentry);
+					Py_DECREF(oidentry);
+					len -= intlen;
+					p += intlen;
+				}
+			} else {
+				value = PyLong_FromLong( *(u_int *) val);
+			}
 			break;
 		case CTLTYPE_LONG:
-			value = PyLong_FromLong( *(long *) val);
+			if (len >= intlen) {
+				value = PyList_New(0);
+				while (len >= intlen) {
+					PyObject *oidentry = PyLong_FromLong( *(long*) p);
+					PyList_Append(value, oidentry);
+					Py_DECREF(oidentry);
+					len -= intlen;
+					p += intlen;
+				}
+			} else {
+				value = PyLong_FromLong( *(long *) val);
+			}
 			break;
 		case CTLTYPE_ULONG:
-			value = PyLong_FromUnsignedLong( *(u_long *) val);
+			if (len >= intlen) {
+				value = PyList_New(0);
+				while (len >= intlen) {
+					PyObject *oidentry = PyLong_FromUnsignedLong( *(u_long *) p);
+					PyList_Append(value, oidentry);
+					Py_DECREF(oidentry);
+					len -= intlen;
+					p += intlen;
+				}
+			} else {
+				value = PyLong_FromUnsignedLong( *(u_long *) val);
+			}
 			break;
 #ifdef CTLTYPE_S64
 		case CTLTYPE_S64:
-			value = PyLong_FromLongLong( *(long long *) val);
+			if (len >= intlen) {
+				value = PyList_New(0);
+				while (len >= intlen) {
+					PyObject *oidentry = PyLong_FromLongLong( *(long long *) p);
+					PyList_Append(value, oidentry);
+					Py_DECREF(oidentry);
+					len -= intlen;
+					p += intlen;
+				}
+			} else {
+				value = PyLong_FromLongLong( *(long long *) val);
+			}
 			break;
 		case CTLTYPE_U64:
-			value = PyLong_FromUnsignedLongLong( *(unsigned long long *) val);
+			if (len >= intlen) {
+				value = PyList_New(0);
+				while (len >= intlen) {
+					PyObject *oidentry = PyLong_FromUnsignedLongLong( *(unsigned long long *) p);
+					PyList_Append(value, oidentry);
+					Py_DECREF(oidentry);
+					len -= intlen;
+					p += intlen;
+				}
+			} else {
+				value = PyLong_FromUnsignedLongLong( *(unsigned long long *) val);
+			}
 			break;
 #else
 		case CTLTYPE_QUAD:
