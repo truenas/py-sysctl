@@ -39,8 +39,12 @@ static int ctl_size[CTLTYPE+1] = {
 	[CTLTYPE_UINT] = sizeof(u_int),
 	[CTLTYPE_LONG] = sizeof(long),
 	[CTLTYPE_ULONG] = sizeof(u_long),
+#ifdef CTLTYPE_S64
 	[CTLTYPE_S64] = sizeof(int64_t),
 	[CTLTYPE_U64] = sizeof(int64_t),
+#else
+	[CTLTYPE_QUAD] = sizeof(int64_t),
+#endif
 };
 
 
