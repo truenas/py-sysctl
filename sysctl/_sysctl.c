@@ -326,7 +326,6 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 
 	sysctl(oid, nlen, val, &len, 0, 0);
 
-	printf("aa %d\n", ctltype);
 	switch(ctltype) {
 		case CTLTYPE_STRING:
 			val[len] = '\0';
