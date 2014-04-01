@@ -487,6 +487,7 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 			} else {
 				new = new_sysctlobj(oid, len, kind);
 				PyList_Append(list, new);
+				Py_DECREF(new);
 			}
 		}
 	} else {
