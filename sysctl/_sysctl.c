@@ -333,7 +333,7 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 			break;
 		case CTLTYPE_INT:
 
-			if (len >= intlen) {
+			if (len > intlen) {
 				value = PyList_New(0);
 				while (len >= intlen) {
 					PyObject *oidentry = PyLong_FromLong( *(int *) p);
@@ -347,7 +347,7 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 			}
 			break;
 		case CTLTYPE_UINT:
-			if (len >= intlen) {
+			if (len > intlen) {
 				value = PyList_New(0);
 				while (len >= intlen) {
 					PyObject *oidentry = PyLong_FromLong( *(u_int *) p);
@@ -361,7 +361,7 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 			}
 			break;
 		case CTLTYPE_LONG:
-			if (len >= intlen) {
+			if (len > intlen) {
 				value = PyList_New(0);
 				while (len >= intlen) {
 					PyObject *oidentry = PyLong_FromLong( *(long*) p);
@@ -375,7 +375,7 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 			}
 			break;
 		case CTLTYPE_ULONG:
-			if (len >= intlen) {
+			if (len > intlen) {
 				value = PyList_New(0);
 				while (len >= intlen) {
 					PyObject *oidentry = PyLong_FromUnsignedLong( *(u_long *) p);
@@ -390,7 +390,7 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 			break;
 #ifdef CTLTYPE_S64
 		case CTLTYPE_S64:
-			if (len >= intlen) {
+			if (len > intlen) {
 				value = PyList_New(0);
 				while (len >= intlen) {
 					PyObject *oidentry = PyLong_FromLongLong( *(long long *) p);
@@ -404,7 +404,7 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 			}
 			break;
 		case CTLTYPE_U64:
-			if (len >= intlen) {
+			if (len > intlen) {
 				value = PyList_New(0);
 				while (len >= intlen) {
 					PyObject *oidentry = PyLong_FromUnsignedLongLong( *(unsigned long long *) p);
