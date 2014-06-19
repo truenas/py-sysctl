@@ -181,7 +181,17 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 		}
 		if(sysctl(oid, size, 0, 0, newval, newsize) == -1) {
 
-			PyErr_SetString(PyExc_TypeError, "Failed to set sysctl");
+			switch (errno) {
+			case EOPNOTSUPP:
+				PyErr_SetString(PyExc_TypeError, "Value is not available");
+			case ENOTDIR:
+				PyErr_SetString(PyExc_TypeError, "Specification is incomplete");
+			case ENOMEM:
+				PyErr_SetString(PyExc_TypeError, "Type is unknown to this program");
+			default:
+				PyErr_SetString(PyExc_TypeError, strerror(errno));
+			}
+
 			free(newval);
 			free(oid);
 			return -1;
