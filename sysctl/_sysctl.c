@@ -135,7 +135,7 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 	switch(self->type) {
 		case CTLTYPE_INT:
 		case CTLTYPE_UINT:
-			if(value->ob_type != &PyLong_Type) {
+			if(value->ob_type != &PyInt_Type) {
 				PyErr_SetString(PyExc_TypeError, "Invalid type");
 				return -1;
 			}
@@ -145,7 +145,7 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 			break;
 		case CTLTYPE_LONG:
 		case CTLTYPE_ULONG:
-			if(value->ob_type != &PyLong_Type) {
+			if(value->ob_type != &PyLong_Type && value->ob_type != &PyInt_Type) {
 				PyErr_SetString(PyExc_TypeError, "Invalid type");
 				return -1;
 			}
