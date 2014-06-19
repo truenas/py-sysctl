@@ -23,6 +23,7 @@ Sysctls for CPU #0
 Inspect a sysctl
 ++++++++++++++++
 
+    >>> import sysctl
     >>> shmall = sysctl.filter('kern.ipc.shmall')[0]
     >>> shmall.value
     131072L
@@ -30,3 +31,9 @@ Inspect a sysctl
     False
     >>> shmall.writable
     True
+
+
+License
+-------
+
+This python module is licensed under BSD 2 Clause, see LICENSE.
