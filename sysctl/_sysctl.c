@@ -462,7 +462,7 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 	int name1[22], name2[22], i, j, len = 0, oid[CTL_MAXNAME];
 	size_t l1=0, l2;
 	static char *kwlist[] = {"mib", "writable", NULL};
-	char *mib;
+	char *mib = NULL;
 	PyObject *list=NULL, *writable=NULL, *new=NULL;
 	u_int kind, ctltype;
 
