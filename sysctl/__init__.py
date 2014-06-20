@@ -11,7 +11,7 @@ try:
 except ImportError:
     pass
 
-VERSION = (0, 1, 0, 'final', 0)
+VERSION = (0, 2, 0, 'final', 0)
 
 
 def get_version(version=None):
