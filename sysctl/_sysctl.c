@@ -284,7 +284,7 @@ name2oid(char *name, int *oidp)
 }
 
 
-static u_int sysctl_type(int *oid, int len) {
+static u_int sysctl_type(int *oid, int len, char *fmt) {
 
 	int qoid[CTL_MAXNAME+2], i;
 	u_char buf[BUFSIZ];
@@ -301,11 +301,14 @@ static u_int sysctl_type(int *oid, int len) {
 		exit(-1);
 	}
 
+	if (fmt)
+		strcpy(fmt, (char *)(buf + sizeof(u_int)));
+
 	return *(u_int *) buf;
 }
 
 
-static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
+static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind, char *fmt) {
 
 	char name[BUFSIZ];
 	int qoid[CTL_MAXNAME+2], ctltype, rv, i;
@@ -432,8 +435,32 @@ static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind) {
 			value = PyLong_FromLongLong( *(long long *) val);
 			break;
 #endif
+		case CTLTYPE_OPAQUE:
+			if (strcmp(fmt, "S,clockinfo") == 0) {
+				printf("here %s", name);
+				struct clockinfo *ci = (struct clockinfo *) val;
+				PyObject *item;
+				value = PyDict_New();
+
+				item = PyInt_FromLong(ci->hz);
+				PyDict_SetItemString(value, "hz", item);
+				Py_DECREF(item);
+
+				item = PyInt_FromLong(ci->tick);
+				PyDict_SetItemString(value, "tick", item);
+				Py_DECREF(item);
+
+				item = PyInt_FromLong(ci->profhz);
+				PyDict_SetItemString(value, "profhz", item);
+				Py_DECREF(item);
+
+				item = PyInt_FromLong(ci->stathz);
+				PyDict_SetItemString(value, "stathz", item);
+				Py_DECREF(item);
+				break;
+			}
 		default:
-			value = PyUnicode_FromString("NOT IMPLEMENTED");
+			value = PyByteArray_FromStringAndSize((const char *) val, len);
 			break;
 	}
 
@@ -472,7 +499,7 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 	int name1[22], name2[22], i, j, len = 0, oid[CTL_MAXNAME];
 	size_t l1=0, l2;
 	static char *kwlist[] = {"mib", "writable", NULL};
-	char *mib = NULL;
+	char *mib = NULL, fmt[BUFSIZ];
 	PyObject *list=NULL, *writable=NULL, *new=NULL;
 	u_int kind, ctltype;
 
@@ -489,13 +516,13 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 			//PyErr_SetString(PyExc_TypeError, "mib not found");
 			//return -1;
 		} else {
-			kind = sysctl_type(oid, len);
+			kind = sysctl_type(oid, len, fmt);
 			ctltype = kind & CTLTYPE;
 			if(ctltype == CTLTYPE_NODE) {
 				memcpy(name1 + 2, oid, len * sizeof(int));
 				l1 = len + 2;
 			} else {
-				new = new_sysctlobj(oid, len, kind);
+				new = new_sysctlobj(oid, len, kind, fmt);
 				PyList_Append(list, new);
 				Py_DECREF(new);
 			}
@@ -524,7 +551,7 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 			if (name2[i] != oid[i])
 				return list;
 
-		kind = sysctl_type(name2, l2);
+		kind = sysctl_type(name2, l2, fmt);
 		ctltype = kind & CTLTYPE;
 		if( (PyObject *)writable == Py_True && (kind & CTLFLAG_WR) == 0 ) {
 			memcpy(name1 + 2, name2, l2 * sizeof(int));
@@ -536,7 +563,7 @@ static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
 			continue;
 		}
 
-		new = new_sysctlobj(name2, l2, kind);
+		new = new_sysctlobj(name2, l2, kind, fmt);
 		PyList_Append(list, new);
 		Py_DECREF(new);
 
