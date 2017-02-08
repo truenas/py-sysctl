@@ -10,6 +10,7 @@ struct module_state {
 };
 
 #if PY_MAJOR_VERSION >= 3
+#define PyInt_Type PyLong_Type
 #define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
 #else
 #define GETSTATE(m) (&_state)
