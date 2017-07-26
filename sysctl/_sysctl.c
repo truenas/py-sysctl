@@ -130,10 +130,6 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 		PyErr_SetString(PyExc_TypeError, "Sysctl is not writable");
 		return -1;
 	}
-	if((PyObject *)self->tuneable == Py_True) {
-		PyErr_SetString(PyExc_TypeError, "Sysctl is a tuneable");
-		return -1;
-	}
 	switch(self->type) {
 		case CTLTYPE_INT:
 		case CTLTYPE_UINT:
