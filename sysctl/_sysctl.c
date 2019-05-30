@@ -218,7 +218,9 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 			free(oid);
 			return -1;
 		}
-		free(newval);
+		if(self->type != CTLTYPE_STRING) {
+			free(newval);
+		}
 		free(oid);
 	}
 
