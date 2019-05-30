@@ -122,9 +122,23 @@ static PyObject *Sysctl_getvalue(Sysctl *self, void *closure) {
 	return self->value;
 }
 
+static char* convert_pyobject_str_to_char(PyObject *obj) {
+	char *bytes = NULL;
+	PyObject* str = NULL;
+	if(PyUnicode_CheckExact(obj)) {
+		str = PyUnicode_AsEncodedString(obj, "utf-8", "~E~");
+		if(str) {
+			bytes = PyBytes_AS_STRING(str);
+			Py_XDECREF(str);
+		}
+	}
+	return bytes;
+}
+
 static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 	void *newval = NULL;
 	size_t newsize = 0;
+	char* newvalstr = NULL;
 
 	if((PyObject *)self->writable == Py_False) {
 		PyErr_SetString(PyExc_TypeError, "Sysctl is not writable");
@@ -164,6 +178,16 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 			newval = malloc(sizeof(long long));
 			newsize = sizeof(long long);
 			*((long long *) newval) = PyLong_AsLongLong(value);
+			break;
+		case CTLTYPE_STRING:
+			newvalstr = convert_pyobject_str_to_char(value);
+			if(newvalstr) {
+				newval = newvalstr;
+				newsize = strlen(newvalstr);
+			} else {
+				PyErr_SetString(PyExc_TypeError, "Invalid type");
+				return -1;
+			}
 			break;
 		default:
 			break;
