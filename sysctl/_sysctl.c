@@ -8,7 +8,7 @@
 #include <sysexits.h>
 
 /*
- * CTL_SYSCTL first defuned in FreeBSD 12.2
+ * CTL_SYSCTL first defined in FreeBSD 12.2
  */
 #ifndef CTL_SYSCTL
 #define	CTL_SYSCTL		0	/* "magic" numbers */
@@ -16,6 +16,7 @@
 #define	CTL_SYSCTL_NEXT		2	/* next OID */
 #define	CTL_SYSCTL_NAME2OID	3	/* int array of name */
 #define	CTL_SYSCTL_OIDFMT	4	/* OID's kind and format */
+#define	CTL_SYSCTL_OIDDESCR	5	/* OID's description */
 #endif
 
 struct module_state {
@@ -37,6 +38,7 @@ typedef struct {
 	PyObject_HEAD
 	PyObject *name;
 	PyObject *value;
+	PyObject *description;
 	PyObject *writable;
 	PyObject *tuneable;
 	PyObject *oid;
@@ -64,12 +66,14 @@ Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds)
 	PyObject *tmp,
 	    *name = NULL,
 	    *value = NULL,
+	    *description = NULL,
 	    *writable = NULL,
 	    *tuneable = NULL,
 	    *oid = NULL;
 	static char *kwlist[] = {
 		"name",
 		"value",
+		"description",
 		"writable",
 		"tuneable",
 		"oid",
@@ -77,8 +81,9 @@ Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds)
 		NULL
 	};
 
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|OOOOI", kwlist, &name,
-	    &value, &writable, &tuneable, &oid, &self->private.type))
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|OOOOOI", kwlist,
+	    &name, &value, &description, &writable, &tuneable, &oid,
+	    &self->private.type))
 		return (-1);
 
 	if (name) {
@@ -91,6 +96,12 @@ Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds)
 		tmp = self->value;
 		Py_INCREF(value);
 		self->value = value;
+		Py_XDECREF(tmp);
+	}
+	if (description) {
+		tmp = self->description;
+		Py_INCREF(description);
+		self->description = tmp;
 		Py_XDECREF(tmp);
 	}
 	if (writable) {
@@ -454,9 +465,47 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 	return (0);
 }
 
+static PyObject *
+Sysctl_getdescr(Sysctl *self, void *closure __unused)
+{
+	int qoid[CTL_MAXNAME + 2];
+	const int *oid;
+	char *descr;
+	size_t len;
+	u_int nlen;
+
+	if (self->description != NULL) {
+		Py_INCREF(self->description);
+		return (self->description);
+	}
+
+	oid = self->private.oid;
+	nlen = self->private.len;
+	qoid[0] = CTL_SYSCTL;
+	qoid[1] = CTL_SYSCTL_OIDDESCR;
+	memcpy(qoid + 2, oid, nlen * sizeof(int));
+	descr = NULL;
+	len = 0;
+	while (sysctl(qoid, nlen + 2, descr, &len, NULL, 0) != 0 ||
+	    descr == NULL) {
+		if (descr != NULL && errno != 0 && errno != ENOMEM)
+			err(EX_OSERR, "%s: sysctl", __func__);
+		descr = realloc(descr, len);
+		if (descr == NULL)
+			err(EX_OSERR, "%s: realloc", __func__);
+	}
+	self->description = PyUnicode_FromString(descr);
+	free(descr);
+
+	Py_INCREF(self->description);
+	return (self->description);
+}
+
 static PyGetSetDef Sysctl_getseters[] = {
 	{ "value", (getter)Sysctl_getvalue, (setter)Sysctl_setvalue,
 	    "sysctl value", NULL },
+	{ "description", (getter)Sysctl_getdescr, (setter)NULL,
+	    "sysctl description", NULL },
 	{ NULL } /* Sentinel */
 };
 
