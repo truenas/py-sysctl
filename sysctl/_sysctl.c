@@ -1,101 +1,134 @@
-#include <sys/types.h>
+#include <sys/param.h>
 #include <sys/sysctl.h>
-#include <errno.h>
 
 #include <Python.h>
+#include <err.h>
+#include <errno.h>
 #include <structmember.h>
+#include <sysexits.h>
+
+/*
+ * CTL_SYSCTL first defined in FreeBSD 12.2
+ */
+#ifndef CTL_SYSCTL
+#define	CTL_SYSCTL		0	/* "magic" numbers */
+#define	CTL_SYSCTL_NAME		1	/* string name of OID */
+#define	CTL_SYSCTL_NEXT		2	/* next OID */
+#define	CTL_SYSCTL_NAME2OID	3	/* int array of name */
+#define	CTL_SYSCTL_OIDFMT	4	/* OID's kind and format */
+#define	CTL_SYSCTL_OIDDESCR	5	/* OID's description */
+#endif
 
 struct module_state {
-    PyObject *error;
+	PyObject *error;
 };
 
 #if PY_MAJOR_VERSION >= 3
 #define PyInt_Type PyLong_Type
 #define PyInt_FromLong PyLong_FromLong
-#define GETSTATE(m) ((struct module_state*)PyModule_GetState(m))
+#define GETSTATE(m) ((struct module_state *)PyModule_GetState(m))
+PyMODINIT_FUNC PyInit__sysctl(void);
 #else
 #define GETSTATE(m) (&_state)
 static struct module_state _state;
+PyMODINIT_FUNC init_sysctl(void);
 #endif
 
-static PyObject *
-error_out(PyObject *m) {
-	struct module_state *st = GETSTATE(m);
-	PyErr_SetString(st->error, "something bad happened");
-	return NULL;
-}
-
 typedef struct {
-	PyObject_HEAD;
+	PyObject_HEAD
 	PyObject *name;
 	PyObject *value;
+	PyObject *description;
 	PyObject *writable;
 	PyObject *tuneable;
 	PyObject *oid;
-	unsigned int type;
+	struct {
+		int *oid;
+		char *fmt;
+		u_int len;
+		u_int type;
+	} private;
 } Sysctl;
 
+static PyObject *
+error_out(PyObject *m)
+{
+	struct module_state *st = GETSTATE(m);
 
-static int ctl_size[CTLTYPE+1] = {
-	[CTLTYPE_INT] = sizeof(int),
-	[CTLTYPE_UINT] = sizeof(u_int),
-	[CTLTYPE_LONG] = sizeof(long),
-	[CTLTYPE_ULONG] = sizeof(u_long),
-#ifdef CTLTYPE_S64
-	[CTLTYPE_S64] = sizeof(int64_t),
-	[CTLTYPE_U64] = sizeof(int64_t),
-#else
-	[CTLTYPE_QUAD] = sizeof(int64_t),
-#endif
-};
+	PyErr_SetString(st->error, "something bad happened");
 
+	return (NULL);
+}
 
-static int Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds) {
+static int
+Sysctl_init(Sysctl *self, PyObject *args, PyObject *kwds)
+{
+	PyObject *tmp,
+	    *name = NULL,
+	    *value = NULL,
+	    *description = NULL,
+	    *writable = NULL,
+	    *tuneable = NULL,
+	    *oid = NULL;
+	static char *kwlist[] = {
+		"name",
+		"value",
+		"description",
+		"writable",
+		"tuneable",
+		"oid",
+		"type",
+		NULL
+	};
 
-	PyObject *name=NULL, *value=NULL, *writable=NULL, *tuneable=NULL, *oid=NULL, *tmp;
-	static char *kwlist[] = {"name", "value", "writable", "tuneable", "type", "oid", NULL};
-	if (! PyArg_ParseTupleAndKeywords(args, kwds, "OO|OOIO", kwlist, &name, &value, &writable, &tuneable, &self->type, &oid))
-		return -1;
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|OOOOOI", kwlist,
+	    &name, &value, &description, &writable, &tuneable, &oid,
+	    &self->private.type))
+		return (-1);
 
-	if(name) {
+	if (name) {
 		tmp = self->name;
 		Py_INCREF(name);
 		self->name = name;
 		Py_XDECREF(tmp);
 	}
-	if(value) {
+	if (value) {
 		tmp = self->value;
 		Py_INCREF(value);
 		self->value = value;
 		Py_XDECREF(tmp);
 	}
-
-	if(writable) {
+	if (description) {
+		tmp = self->description;
+		Py_INCREF(description);
+		self->description = tmp;
+		Py_XDECREF(tmp);
+	}
+	if (writable) {
 		tmp = self->writable;
 		Py_INCREF(writable);
 		self->writable = writable;
 		Py_XDECREF(tmp);
 	}
-
-	if(tuneable) {
+	if (tuneable) {
 		tmp = self->tuneable;
 		Py_INCREF(tuneable);
 		self->tuneable = tuneable;
 		Py_XDECREF(tmp);
 	}
-
-	if(oid) {
+	if (oid) {
 		tmp = self->oid;
 		Py_INCREF(oid);
 		self->oid = oid;
 		Py_XDECREF(tmp);
 	}
 
-	return 0;
-
+	return (0);
 }
 
-static PyObject *Sysctl_repr(Sysctl *self) {
+static PyObject *
+Sysctl_repr(Sysctl *self)
+{
 	static PyObject *format = NULL;
 	PyObject *args, *result;
 	format = PyUnicode_FromString("<Sysctl: %s>");
@@ -105,120 +138,322 @@ static PyObject *Sysctl_repr(Sysctl *self) {
 	Py_DECREF(args);
 	Py_DECREF(format);
 
-	return result;
+	return (result);
 }
 
-static void Sysctl_dealloc(Sysctl* self) {
+static void
+Sysctl_dealloc(Sysctl *self)
+{
+	free(self->private.oid);
+	free(self->private.fmt);
 	Py_XDECREF(self->name);
 	Py_XDECREF(self->value);
 	Py_XDECREF(self->writable);
 	Py_XDECREF(self->tuneable);
 	Py_XDECREF(self->oid);
-	Py_TYPE(self)->tp_free((PyObject*)self);
+	Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
-static PyObject *Sysctl_getvalue(Sysctl *self, void *closure) {
-	Py_INCREF(self->value);
-	return self->value;
+static PyObject *
+Sysctl_getvalue(Sysctl *self, void *closure __unused)
+{
+	static const size_t ctl_size[CTLTYPE + 1] = {
+		[CTLTYPE_INT] = sizeof(int),
+		[CTLTYPE_UINT] = sizeof(u_int),
+		[CTLTYPE_LONG] = sizeof(long),
+		[CTLTYPE_ULONG] = sizeof(u_long),
+#ifdef CTLTYPE_S64
+		[CTLTYPE_S64] = sizeof(int64_t),
+		[CTLTYPE_U64] = sizeof(int64_t),
+#else
+		[CTLTYPE_QUAD] = sizeof(int64_t),
+#endif
+	};
+	PyObject *value, *entry;
+	u_char *val, *p;
+	const int *oid;
+	size_t len, intlen;
+	u_int nlen;
+
+	if (self->value != NULL) {
+		Py_INCREF(self->value);
+		return (self->value);
+	}
+
+	intlen = ctl_size[self->private.type];
+	oid = self->private.oid;
+	nlen = self->private.len;
+	p = NULL;
+	len = 0;
+	while (sysctl(oid, nlen, p, &len, NULL, 0) != 0 || p == NULL) {
+		if (p != NULL && errno != 0 && errno != ENOMEM)
+			err(EX_OSERR, "%s: sysctl", __func__);
+		p = realloc(p, len);
+		if (p == NULL)
+			err(EX_OSERR, "%s: realloc", __func__);
+	}
+	val = p;
+
+	switch (self->private.type) {
+	case CTLTYPE_STRING:
+		val[len - 1] = '\0';
+		value = PyUnicode_FromString((const char *)val);
+		break;
+	case CTLTYPE_INT:
+		if (len > intlen) {
+			value = PyList_New(0);
+			while (len >= intlen) {
+				const int *valp = (const void *)p;
+				entry = PyLong_FromLong(*valp);
+				PyList_Append(value, entry);
+				Py_DECREF(entry);
+				len -= intlen;
+				p += intlen;
+			}
+		} else {
+			const int *valp = (const void *)val;
+			value = PyLong_FromLong(*valp);
+		}
+		break;
+	case CTLTYPE_UINT:
+		if (len > intlen) {
+			value = PyList_New(0);
+			while (len >= intlen) {
+				const unsigned int *valp = (const void *)p;
+				entry = PyLong_FromLong(*valp);
+				PyList_Append(value, entry);
+				Py_DECREF(entry);
+				len -= intlen;
+				p += intlen;
+			}
+		} else {
+			const unsigned int *valp = (const void *)val;
+			value = PyLong_FromLong(*valp);
+		}
+		break;
+	case CTLTYPE_LONG:
+		if (len > intlen) {
+			value = PyList_New(0);
+			while (len >= intlen) {
+				const long *valp = (const void *)p;
+				entry = PyLong_FromLong(*valp);
+				PyList_Append(value, entry);
+				Py_DECREF(entry);
+				len -= intlen;
+				p += intlen;
+			}
+		} else {
+			const long *valp = (const void *)val;
+			value = PyLong_FromLong(*valp);
+		}
+		break;
+	case CTLTYPE_ULONG:
+		if (len > intlen) {
+			value = PyList_New(0);
+			while (len >= intlen) {
+				const unsigned long *valp = (const void *)p;
+				entry = PyLong_FromUnsignedLong(*valp);
+				PyList_Append(value, entry);
+				Py_DECREF(entry);
+				len -= intlen;
+				p += intlen;
+			}
+		} else {
+			const unsigned long *valp = (const void *)val;
+			value = PyLong_FromUnsignedLong(*valp);
+		}
+		break;
+#ifdef CTLTYPE_S64
+	case CTLTYPE_S64:
+		if (len > intlen) {
+			value = PyList_New(0);
+			while (len >= intlen) {
+				const long long *valp = (const void *)p;
+				entry = PyLong_FromLongLong(*valp);
+				PyList_Append(value, entry);
+				Py_DECREF(entry);
+				len -= intlen;
+				p += intlen;
+			}
+		} else {
+			const long long *valp = (const void *)val;
+			value = PyLong_FromLongLong(*valp);
+		}
+		break;
+	case CTLTYPE_U64:
+		if (len > intlen) {
+			value = PyList_New(0);
+			while (len >= intlen) {
+				const unsigned long long *valp =
+				    (const void *)p;
+				entry = PyLong_FromUnsignedLongLong(*valp);
+				PyList_Append(value, entry);
+				Py_DECREF(entry);
+				len -= intlen;
+				p += intlen;
+			}
+		} else {
+			const unsigned long long *valp = (const void *)val;
+			value = PyLong_FromUnsignedLongLong(*valp);
+		}
+		break;
+#else
+	case CTLTYPE_QUAD:
+		value = PyLong_FromLongLong(*(const long long *)val);
+		break;
+#endif
+	case CTLTYPE_OPAQUE:
+		if (strcmp(self->private.fmt, "S,clockinfo") == 0) {
+			const struct clockinfo *ci = (const void *)val;
+
+			value = PyDict_New();
+
+			entry = PyInt_FromLong(ci->hz);
+			PyDict_SetItemString(value, "hz", entry);
+			Py_DECREF(entry);
+
+			entry = PyInt_FromLong(ci->tick);
+			PyDict_SetItemString(value, "tick", entry);
+			Py_DECREF(entry);
+
+			entry = PyInt_FromLong(ci->profhz);
+			PyDict_SetItemString(value, "profhz", entry);
+			Py_DECREF(entry);
+
+			entry = PyInt_FromLong(ci->stathz);
+			PyDict_SetItemString(value, "stathz", entry);
+			Py_DECREF(entry);
+
+			break;
+		}
+		/* fallthrough */
+	default:
+		value = PyByteArray_FromStringAndSize((const char *)val,
+		    (Py_ssize_t)len);
+		break;
+	}
+	free(val);
+
+	Py_INCREF(value);
+	self->value = value;
+	return (value);
 }
 
-static char* convert_pyobject_str_to_char(PyObject *obj) {
+static char *
+convert_pyobject_str_to_char(PyObject *obj)
+{
 	char *bytes = NULL;
-	PyObject* str = NULL;
-	if(PyUnicode_CheckExact(obj)) {
+	PyObject *str = NULL;
+
+	if (PyUnicode_CheckExact(obj)) {
 		str = PyUnicode_AsEncodedString(obj, "utf-8", "~E~");
-		if(str) {
+		if (str) {
 			bytes = PyBytes_AS_STRING(str);
 			Py_XDECREF(str);
 		}
 	}
-	return bytes;
+
+	return (bytes);
 }
 
-static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
+static int
+Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
+{
 	void *newval = NULL;
 	size_t newsize = 0;
-	char* newvalstr = NULL;
+	char *newvalstr = NULL;
 
-	if((PyObject *)self->writable == Py_False) {
+	if ((PyObject *)self->writable == Py_False) {
 		PyErr_SetString(PyExc_TypeError, "Sysctl is not writable");
-		return -1;
+		return (-1);
 	}
-	switch(self->type) {
-		case CTLTYPE_INT:
-		case CTLTYPE_UINT:
-			if(value->ob_type != &PyInt_Type) {
-				PyErr_SetString(PyExc_TypeError, "Invalid type");
-				return -1;
-			}
-			newval = malloc(sizeof(int));
-			newsize = sizeof(int);
-			*((int *) newval) = PyLong_AsLong(value);
-			break;
-		case CTLTYPE_LONG:
-		case CTLTYPE_ULONG:
-			if(value->ob_type != &PyLong_Type && value->ob_type != &PyInt_Type) {
-				PyErr_SetString(PyExc_TypeError, "Invalid type");
-				return -1;
-			}
-			newval = malloc(sizeof(long));
-			newsize = sizeof(long);
-			*((long *) newval) = PyLong_AsLong(value);
-			break;
+	switch (self->private.type) {
+	case CTLTYPE_INT:
+	case CTLTYPE_UINT:
+		if (value->ob_type != &PyInt_Type) {
+			PyErr_SetString(PyExc_TypeError, "Invalid type");
+			return (-1);
+		}
+		newval = malloc(sizeof(int));
+		newsize = sizeof(int);
+		*((int *)newval) = (int)PyLong_AsLong(value);
+		break;
+	case CTLTYPE_LONG:
+	case CTLTYPE_ULONG:
+		if (value->ob_type != &PyLong_Type &&
+		    value->ob_type != &PyInt_Type) {
+			PyErr_SetString(PyExc_TypeError, "Invalid type");
+			return (-1);
+		}
+		newval = malloc(sizeof(long));
+		newsize = sizeof(long);
+		*((long *)newval) = PyLong_AsLong(value);
+		break;
 #ifdef CTLTYPE_S64
-		case CTLTYPE_S64:
-		case CTLTYPE_U64:
+	case CTLTYPE_S64:
+	case CTLTYPE_U64:
 #else
-		case CTLTYPE_QUAD:
+	case CTLTYPE_QUAD:
 #endif
-			if(value->ob_type != &PyLong_Type) {
-				PyErr_SetString(PyExc_TypeError, "Invalid type");
-				return -1;
-			}
-			newval = malloc(sizeof(long long));
-			newsize = sizeof(long long);
-			*((long long *) newval) = PyLong_AsLongLong(value);
-			break;
-		case CTLTYPE_STRING:
-			newvalstr = convert_pyobject_str_to_char(value);
-			if(newvalstr) {
-				newval = newvalstr;
-				newsize = strlen(newvalstr);
-			} else {
-				PyErr_SetString(PyExc_TypeError, "Invalid type");
-				return -1;
-			}
-			break;
-		default:
-			break;
+		if (value->ob_type != &PyLong_Type) {
+			PyErr_SetString(PyExc_TypeError, "Invalid type");
+			return (-1);
+		}
+		newval = malloc(sizeof(long long));
+		newsize = sizeof(long long);
+		*((long long *)newval) = PyLong_AsLongLong(value);
+		break;
+	case CTLTYPE_STRING:
+		newvalstr = convert_pyobject_str_to_char(value);
+		if (newvalstr) {
+			newval = newvalstr;
+			newsize = strlen(newvalstr);
+		} else {
+			PyErr_SetString(PyExc_TypeError, "Invalid type");
+			return (-1);
+		}
+		break;
+	default:
+		break;
 	}
 
-	if(newval) {
-		int *oid, i=0;
+	if (newval) {
+		int *oid;
 		ssize_t size;
-		size = PyList_Size((PyObject *) self->oid);
-		oid = calloc(sizeof(int), size);
-		for(i=0;i<size;i++) {
-			oid[i] = (u_int) PyLong_AsLong(PyList_GetItem(self->oid, i));
+
+		size = PyList_Size(self->oid);
+		assert(size >= 0);
+		oid = calloc(sizeof(int), (size_t)size);
+		for (int i = 0; i < size; i++) {
+			PyObject *item = PyList_GetItem(self->oid, i);
+			oid[i] = (int)PyLong_AsLong(item);
 		}
-		if(sysctl(oid, size, 0, 0, newval, newsize) == -1) {
+		if (sysctl(oid, (u_int)size, 0, 0, newval, newsize) == -1) {
 
 			switch (errno) {
 			case EOPNOTSUPP:
-				PyErr_SetString(PyExc_TypeError, "Value is not available");
+				PyErr_SetString(
+				    PyExc_TypeError, "Value is not available");
+				break;
 			case ENOTDIR:
-				PyErr_SetString(PyExc_TypeError, "Specification is incomplete");
+				PyErr_SetString(PyExc_TypeError,
+				    "Specification is incomplete");
+				break;
 			case ENOMEM:
-				PyErr_SetString(PyExc_TypeError, "Type is unknown to this program");
+				PyErr_SetString(PyExc_TypeError,
+				    "Type is unknown to this program");
+				break;
 			default:
-				PyErr_SetString(PyExc_TypeError, strerror(errno));
+				PyErr_SetString(
+				    PyExc_TypeError, strerror(errno));
+				break;
 			}
 
 			free(newval);
 			free(oid);
-			return -1;
+			return (-1);
 		}
-		if(self->type != CTLTYPE_STRING) {
+		if (self->private.type != CTLTYPE_STRING) {
 			free(newval);
 		}
 		free(oid);
@@ -227,423 +462,276 @@ static int Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure) {
 	Py_DECREF(self->value);
 	Py_INCREF(value);
 	self->value = value;
-	return 0;
+	return (0);
+}
+
+static PyObject *
+Sysctl_getdescr(Sysctl *self, void *closure __unused)
+{
+	int qoid[CTL_MAXNAME + 2];
+	const int *oid;
+	char *descr;
+	size_t len;
+	u_int nlen;
+
+	if (self->description != NULL) {
+		Py_INCREF(self->description);
+		return (self->description);
+	}
+
+	oid = self->private.oid;
+	nlen = self->private.len;
+	qoid[0] = CTL_SYSCTL;
+	qoid[1] = CTL_SYSCTL_OIDDESCR;
+	memcpy(qoid + 2, oid, nlen * sizeof(int));
+	descr = NULL;
+	len = 0;
+	while (sysctl(qoid, nlen + 2, descr, &len, NULL, 0) != 0 ||
+	    descr == NULL) {
+		if (descr != NULL && errno != 0 && errno != ENOMEM)
+			err(EX_OSERR, "%s: sysctl", __func__);
+		descr = realloc(descr, len);
+		if (descr == NULL)
+			err(EX_OSERR, "%s: realloc", __func__);
+	}
+	self->description = PyUnicode_FromString(descr);
+	free(descr);
+
+	Py_INCREF(self->description);
+	return (self->description);
 }
 
 static PyGetSetDef Sysctl_getseters[] = {
-	{"value", (getter)Sysctl_getvalue, (setter)Sysctl_setvalue, "sysctl value", NULL},
-	{NULL}  /* Sentinel */
+	{ "value", (getter)Sysctl_getvalue, (setter)Sysctl_setvalue,
+	    "sysctl value", NULL },
+	{ "description", (getter)Sysctl_getdescr, (setter)NULL,
+	    "sysctl description", NULL },
+	{ NULL } /* Sentinel */
 };
 
 static PyMemberDef Sysctl_members[] = {
-	{"name", T_OBJECT_EX, offsetof(Sysctl, name), READONLY, "name"},
-	{"writable", T_OBJECT_EX, offsetof(Sysctl, writable), READONLY, "Can be written"},
-	{"tuneable", T_OBJECT_EX, offsetof(Sysctl, tuneable), READONLY, "Tuneable"},
-	{"oid", T_OBJECT_EX, offsetof(Sysctl, oid), READONLY, "OID MIB"},
-	{"type", T_UINT, offsetof(Sysctl, type), READONLY, "Data type of sysctl"},
-	{NULL}  /* Sentinel */
+	{ "name", T_OBJECT_EX, offsetof(Sysctl, name), READONLY, "name" },
+	{ "writable", T_OBJECT_EX, offsetof(Sysctl, writable), READONLY,
+	    "Can be written" },
+	{ "tuneable", T_OBJECT_EX, offsetof(Sysctl, tuneable), READONLY,
+	    "Tuneable" },
+	{ "oid", T_OBJECT_EX, offsetof(Sysctl, oid), READONLY, "OID MIB" },
+	{ "type", T_UINT, offsetof(Sysctl, private.type), READONLY,
+	    "Data type of sysctl" },
+	{ NULL } /* Sentinel */
 };
 
 static PyTypeObject SysctlType = {
 	PyVarObject_HEAD_INIT(NULL, 0)
-	"Sysctl",                  /*tp_name*/
-	sizeof(Sysctl),            /*tp_basicsize*/
-	0,                         /*tp_itemsize*/
-	(destructor)
-	Sysctl_dealloc,            /*tp_dealloc*/
-	0,                         /*tp_print*/
-	0,                         /*tp_getattr*/
-	0,                         /*tp_setattr*/
-	0,                         /*tp_compare*/
-	(PyObject *(*)(PyObject *))
-	Sysctl_repr,               /*tp_repr*/
-	0,                         /*tp_as_number*/
-	0,                         /*tp_as_sequence*/
-	0,                         /*tp_as_mapping*/
-	0,                         /*tp_hash */
-	0,                         /*tp_call*/
-	0,                         /*tp_str*/
-	0,                         /*tp_getattro*/
-	0,                         /*tp_setattro*/
-	0,                         /*tp_as_buffer*/
-	Py_TPFLAGS_DEFAULT,        /*tp_flags*/
-	"Sysctl objects",           /* tp_doc */
-	0,                         /* tp_traverse */
-	0,                         /* tp_clear */
-	0,                         /* tp_richcompare */
-	0,                         /* tp_weaklistoffset */
-	0,                         /* tp_iter */
-	0,                         /* tp_iternext */
-	0,                         /* tp_methods */
-	Sysctl_members,            /* tp_members */
-	Sysctl_getseters,          /* tp_getset */
-	0,                         /* tp_base */
-	0,                         /* tp_dict */
-	0,                         /* tp_descr_get */
-	0,                         /* tp_descr_set */
-	0,                         /* tp_dictoffset */
-	(initproc)Sysctl_init,     /* tp_init */
-	0,                         /* tp_alloc */
-	//Sysctl_new,                 /* tp_new */
+	.tp_name = "Sysctl",
+	.tp_basicsize = sizeof(Sysctl),
+	.tp_dealloc = (destructor)Sysctl_dealloc,
+	.tp_repr = (PyObject *(*)(PyObject *))Sysctl_repr,
+	.tp_flags = Py_TPFLAGS_DEFAULT,
+	.tp_doc = "Sysctl objects",
+	.tp_members = Sysctl_members,
+	.tp_getset = Sysctl_getseters,
+	.tp_init = (initproc)Sysctl_init,
 };
 
-
-
-static int
-name2oid(char *name, int *oidp)
+static u_int
+sysctl_type(const int *oid, u_int len, char *fmt)
 {
-	int oid[2];
-	int i;
-	size_t j;
-
-	oid[0] = 0;
-	oid[1] = 3;
-
-	j = CTL_MAXNAME * sizeof(int);
-	i = sysctl(oid, 2, oidp, &j, name, strlen(name));
-	if (i < 0)
-		return (i);
-	j /= sizeof(int);
-	return (j);
-}
-
-
-static u_int sysctl_type(int *oid, int len, char *fmt) {
-
-	int qoid[CTL_MAXNAME+2], i;
+	int qoid[CTL_MAXNAME + 2];
 	u_char buf[BUFSIZ];
 	size_t j;
 
-	qoid[0] = 0;
-	qoid[1] = 4;
+	qoid[0] = CTL_SYSCTL;
+	qoid[1] = CTL_SYSCTL_OIDFMT;
 	memcpy(qoid + 2, oid, len * sizeof(int));
 
 	j = sizeof(buf);
-	i = sysctl(qoid, len + 2, buf, &j, 0, 0);
-	if(i < 0) {
-		printf("fatal error sysctl_type\n");
-		exit(-1);
-	}
+	if (sysctl(qoid, len + 2, buf, &j, 0, 0) == -1)
+		err(EX_OSERR, "%s: sysctl", __func__);
 
 	if (fmt)
 		strcpy(fmt, (char *)(buf + sizeof(u_int)));
 
-	return *(u_int *) buf;
+	return (*(u_int *)buf);
 }
 
+static PyObject *
+new_sysctlobj(const int *oid, u_int nlen, u_int kind, const char *fmt)
+{
+	char name[BUFSIZ] = { '\0' };
+	int qoid[CTL_MAXNAME + 2], rv;
+	size_t len, nlenb = nlen * sizeof(int);
+	PyObject *selfobj, *args, *kwargs, *oidobj, *oidentry, *writable,
+	    *tuneable;
+	Sysctl *self;
 
-static PyObject *new_sysctlobj(int *oid, int nlen, u_int kind, char *fmt) {
+	qoid[0] = CTL_SYSCTL;
+	qoid[1] = CTL_SYSCTL_NAME;
+	memcpy(qoid + 2, oid, nlenb);
 
-	char name[BUFSIZ];
-	int qoid[CTL_MAXNAME+2], ctltype, rv, i;
-	u_char *val, *p;
-	size_t j, len, intlen;
-	PyObject *sysctlObj, *args, *kwargs, *value, *oidobj, *oidentry, *writable, *tuneable;
+	len = sizeof(name);
+	rv = sysctl(qoid, nlen + 2, name, &len, 0, 0);
+	if (rv == -1)
+		err(EX_OSERR, "%s: sysctl", __func__);
 
-	bzero(name, BUFSIZ);
-	qoid[0] = 0;
-	qoid[1] = 1;
-	memcpy(qoid + 2, oid, nlen * sizeof(int));
-
-	j = sizeof(name);
-	rv = sysctl(qoid, nlen + 2, name, &j, 0, 0);
-	if(rv == -1) {
-		printf("error");
-		exit(1);
-	}
-	ctltype = kind & CTLTYPE;
-	j = 0;
-	sysctl(oid, nlen, 0, &j, 0, 0);
-	j += j; /* double size just to be sure */
-
-	val = malloc(j + 1);
-	len = j;
-	p = val;
-	intlen = ctl_size[ctltype];
-
-	sysctl(oid, nlen, val, &len, 0, 0);
-
-	switch(ctltype) {
-		case CTLTYPE_STRING:
-			val[len] = '\0';
-			value = PyUnicode_FromString((char *)val);
-			break;
-		case CTLTYPE_INT:
-
-			if (len > intlen) {
-				value = PyList_New(0);
-				while (len >= intlen) {
-					PyObject *oidentry = PyLong_FromLong( *(int *) p);
-					PyList_Append(value, oidentry);
-					Py_DECREF(oidentry);
-					len -= intlen;
-					p += intlen;
-				}
-			} else {
-				value = PyLong_FromLong( *(int *) val);
-			}
-			break;
-		case CTLTYPE_UINT:
-			if (len > intlen) {
-				value = PyList_New(0);
-				while (len >= intlen) {
-					PyObject *oidentry = PyLong_FromLong( *(u_int *) p);
-					PyList_Append(value, oidentry);
-					Py_DECREF(oidentry);
-					len -= intlen;
-					p += intlen;
-				}
-			} else {
-				value = PyLong_FromLong( *(u_int *) val);
-			}
-			break;
-		case CTLTYPE_LONG:
-			if (len > intlen) {
-				value = PyList_New(0);
-				while (len >= intlen) {
-					PyObject *oidentry = PyLong_FromLong( *(long*) p);
-					PyList_Append(value, oidentry);
-					Py_DECREF(oidentry);
-					len -= intlen;
-					p += intlen;
-				}
-			} else {
-				value = PyLong_FromLong( *(long *) val);
-			}
-			break;
-		case CTLTYPE_ULONG:
-			if (len > intlen) {
-				value = PyList_New(0);
-				while (len >= intlen) {
-					PyObject *oidentry = PyLong_FromUnsignedLong( *(u_long *) p);
-					PyList_Append(value, oidentry);
-					Py_DECREF(oidentry);
-					len -= intlen;
-					p += intlen;
-				}
-			} else {
-				value = PyLong_FromUnsignedLong( *(u_long *) val);
-			}
-			break;
-#ifdef CTLTYPE_S64
-		case CTLTYPE_S64:
-			if (len > intlen) {
-				value = PyList_New(0);
-				while (len >= intlen) {
-					PyObject *oidentry = PyLong_FromLongLong( *(long long *) p);
-					PyList_Append(value, oidentry);
-					Py_DECREF(oidentry);
-					len -= intlen;
-					p += intlen;
-				}
-			} else {
-				value = PyLong_FromLongLong( *(long long *) val);
-			}
-			break;
-		case CTLTYPE_U64:
-			if (len > intlen) {
-				value = PyList_New(0);
-				while (len >= intlen) {
-					PyObject *oidentry = PyLong_FromUnsignedLongLong( *(unsigned long long *) p);
-					PyList_Append(value, oidentry);
-					Py_DECREF(oidentry);
-					len -= intlen;
-					p += intlen;
-				}
-			} else {
-				value = PyLong_FromUnsignedLongLong( *(unsigned long long *) val);
-			}
-			break;
-#else
-		case CTLTYPE_QUAD:
-			value = PyLong_FromLongLong( *(long long *) val);
-			break;
-#endif
-		case CTLTYPE_OPAQUE:
-			if (strcmp(fmt, "S,clockinfo") == 0) {
-				printf("here %s", name);
-				struct clockinfo *ci = (struct clockinfo *) val;
-				PyObject *item;
-				value = PyDict_New();
-
-				item = PyInt_FromLong(ci->hz);
-				PyDict_SetItemString(value, "hz", item);
-				Py_DECREF(item);
-
-				item = PyInt_FromLong(ci->tick);
-				PyDict_SetItemString(value, "tick", item);
-				Py_DECREF(item);
-
-				item = PyInt_FromLong(ci->profhz);
-				PyDict_SetItemString(value, "profhz", item);
-				Py_DECREF(item);
-
-				item = PyInt_FromLong(ci->stathz);
-				PyDict_SetItemString(value, "stathz", item);
-				Py_DECREF(item);
-				break;
-			}
-		default:
-			value = PyByteArray_FromStringAndSize((const char *) val, len);
-			break;
-	}
+	writable = PyBool_FromLong(kind & CTLFLAG_WR);
+	tuneable = PyBool_FromLong(kind & CTLFLAG_TUN);
 
 	oidobj = PyList_New(0);
-	for(i=0;i<nlen;i++) {
+	for (u_int i = 0; i < nlen; i++) {
 		oidentry = PyLong_FromLong(oid[i]);
 		PyList_Append(oidobj, oidentry);
 		Py_DECREF(oidentry);
 	}
-	writable = PyBool_FromLong(kind & CTLFLAG_WR);
-	tuneable = PyBool_FromLong(kind & CTLFLAG_TUN);
+
 	args = Py_BuildValue("()");
-	kwargs = Py_BuildValue("{s:s,s:O,s:O,s:O,s:I,s:O}",
-		"name", name,
-		"value", value,
-		"writable", writable,
-		"tuneable", tuneable,
-		"type", (unsigned int )ctltype,
-		"oid", oidobj);
-	sysctlObj = PyObject_Call((PyObject *)&SysctlType, args, kwargs);
+	kwargs = Py_BuildValue("{s:s,s:O,s:O,s:O}", "name", name,
+	    "writable", writable, "tuneable", tuneable, "oid", oidobj);
+	selfobj = PyObject_Call((PyObject *)&SysctlType, args, kwargs);
 	Py_DECREF(args);
 	Py_DECREF(kwargs);
 	Py_DECREF(oidobj);
-	Py_DECREF(value);
 	Py_DECREF(writable);
 	Py_DECREF(tuneable);
 
-	free(val);
+	self = (void *)selfobj;
+	self->private.len = nlen;
+	self->private.type = kind & CTLTYPE;
+	self->private.oid = malloc(nlenb);
+	if (self->private.oid == NULL)
+		err(EX_OSERR, "%s: malloc", __func__);
+	memcpy(self->private.oid, oid, nlenb);
+	self->private.fmt = strdup(fmt);
+	if (self->private.fmt == NULL)
+		err(EX_OSERR, "%s: strdup", __func__);
 
-	return sysctlObj;
-
+	return (selfobj);
 }
 
-static PyObject* sysctl_filter(PyObject* self, PyObject* args, PyObject* kwds) {
+static PyObject *
+sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
+{
 
-	int name1[22], name2[22], i, j, len = 0, oid[CTL_MAXNAME];
-	size_t l1=0, l2;
-	static char *kwlist[] = {"mib", "writable", NULL};
+	int name1[22], name2[22], oid[CTL_MAXNAME];
+	size_t len = 0, l1 = 0, l2, i;
+	static char *kwlist[] = { "mib", "writable", NULL };
 	char *mib = NULL, fmt[BUFSIZ];
-	PyObject *list=NULL, *writable=NULL, *new=NULL;
+	PyObject *list = NULL, *writable = NULL, *new = NULL;
 	u_int kind, ctltype;
 
-	if (! PyArg_ParseTupleAndKeywords(args, kwds, "|zO", kwlist, &mib, &writable))
-		return NULL;
+	if (!PyArg_ParseTupleAndKeywords(
+		args, kwds, "|zO", kwlist, &mib, &writable))
+		return (NULL);
 
-	name1[0] = 0;
-	name1[1] = 2;
+	name1[0] = CTL_SYSCTL;
+#ifdef CTL_SYSCTL_NEXTNOSKIP
+	name1[1] = mib != NULL ? CTL_SYSCTL_NEXTNOSKIP : CTL_SYSCTL_NEXT;
+#else
+	name1[1] = CTL_SYSCTL_NEXT;
+#endif
 
 	list = PyList_New(0);
-	if(mib != NULL && mib[0] != '\n' && strlen(mib) > 0) {
-		len = name2oid(mib, oid);
-		if(len < 0) {
-			//PyErr_SetString(PyExc_TypeError, "mib not found");
-			//return -1;
+	if (mib != NULL && mib[0] != '\n' && strlen(mib) > 0) {
+		len = nitems(oid);
+		if (sysctlnametomib(mib, oid, &len) == -1)
+			return (list);
+		kind = sysctl_type(oid, (u_int)len, fmt);
+		ctltype = kind & CTLTYPE;
+		if (ctltype == CTLTYPE_NODE) {
+			memcpy(name1 + 2, oid, len * sizeof(int));
+			l1 = len + 2;
 		} else {
-			kind = sysctl_type(oid, len, fmt);
-			ctltype = kind & CTLTYPE;
-			if(ctltype == CTLTYPE_NODE) {
-				memcpy(name1 + 2, oid, len * sizeof(int));
-				l1 = len + 2;
-			} else {
-				new = new_sysctlobj(oid, len, kind, fmt);
-				PyList_Append(list, new);
-				Py_DECREF(new);
-			}
+			new = new_sysctlobj(oid, (u_int)len, kind, fmt);
+			PyList_Append(list, new);
+			Py_DECREF(new);
 		}
 	} else {
-		name1[2] = 1;
+		name1[2] = CTL_KERN;
 		l1 = 3;
 	}
 
 	for (;;) {
 		l2 = sizeof(name2);
-		j = sysctl(name1, l1, name2, &l2, 0, 0);
-		if (j < 0) {
-			if (errno == ENOENT)
-				return list;
-			//else
-			//	err(1, "sysctl(getnext) %d %zu", j, l2);
-		}
-
+		if (sysctl(name1, (u_int)l1, name2, &l2, NULL, 0) == -1 &&
+		    errno == ENOENT)
+			break;
 		l2 /= sizeof(int);
+		if (l2 < len)
+			break;
 
-		if (len < 0 || l2 < (unsigned int)len)
-			return list;
-
-		for (i = 0; i < len ; i++)
+		for (i = 0; i < len; i++)
 			if (name2[i] != oid[i])
-				return list;
+				return (list);
 
-		kind = sysctl_type(name2, l2, fmt);
+		kind = sysctl_type(name2, (u_int)l2, fmt);
 		ctltype = kind & CTLTYPE;
-		if( (PyObject *)writable == Py_True && (kind & CTLFLAG_WR) == 0 ) {
+		if ((PyObject *)writable == Py_True &&
+		    (kind & CTLFLAG_WR) == 0) {
 			memcpy(name1 + 2, name2, l2 * sizeof(int));
 			l1 = l2 + 2;
 			continue;
-		} else if( (PyObject *)writable == Py_False && (kind & CTLFLAG_WR) > 0 ) {
+		} else if ((PyObject *)writable == Py_False &&
+		    (kind & CTLFLAG_WR) > 0) {
 			memcpy(name1 + 2, name2, l2 * sizeof(int));
 			l1 = l2 + 2;
 			continue;
 		}
 
-		new = new_sysctlobj(name2, l2, kind, fmt);
+		new = new_sysctlobj(name2, (u_int)l2, kind, fmt);
 		PyList_Append(list, new);
 		Py_DECREF(new);
 
 		memcpy(name1 + 2, name2, l2 * sizeof(int));
 		l1 = l2 + 2;
 	}
-	free(mib);
-	Py_DECREF(writable);
 
-	return list;
-
+	return (list);
 }
 
 static PyMethodDef SysctlMethods[] = {
-	{"filter", (PyCFunction) sysctl_filter, METH_VARARGS|METH_KEYWORDS, "Sysctl all"},
-	{"error_out", (PyCFunction) error_out, METH_NOARGS, NULL},
-	{NULL, NULL}        /* Sentinel */
+	{ "filter", (PyCFunction)sysctl_filter, METH_VARARGS | METH_KEYWORDS,
+	    "Sysctl all" },
+	{ "error_out", (PyCFunction)error_out, METH_NOARGS, NULL },
+	{ 0 } /* Sentinel */
 };
-
 
 #if PY_MAJOR_VERSION >= 3
 
-static int sysctl_traverse(PyObject *m, visitproc visit, void *arg) {
+static int
+sysctl_traverse(PyObject *m, visitproc visit, void *arg)
+{
 	Py_VISIT(GETSTATE(m)->error);
-	return 0;
+	return (0);
 }
 
-static int sysctl_clear(PyObject *m) {
+static int
+sysctl_clear(PyObject *m)
+{
 	Py_CLEAR(GETSTATE(m)->error);
-	return 0;
+	return (0);
 }
-
 
 static struct PyModuleDef moduledef = {
 	PyModuleDef_HEAD_INIT,
-	"_sysctl",
-	NULL,
-	sizeof(struct module_state),
-	SysctlMethods,
-	NULL,
-	sysctl_traverse,
-	sysctl_clear,
-	NULL
+	.m_name = "_sysctl",
+	.m_size = sizeof(struct module_state),
+	.m_methods = SysctlMethods,
+	.m_traverse = sysctl_traverse,
+	.m_clear = sysctl_clear,
+	0,
 };
 
-#define INITERROR return NULL
+#define INITERROR return (NULL)
 
-PyObject *
+PyMODINIT_FUNC
 PyInit__sysctl(void)
-
 #else
+
 #define INITERROR return
 
 PyMODINIT_FUNC
 init_sysctl(void)
-#endif
+#endif /* PY_MAJOR_VERSION >= 3 */
 {
 	PyObject *m;
 	SysctlType.tp_new = PyType_GenericNew;
@@ -685,7 +773,6 @@ init_sysctl(void)
 #endif
 
 #if PY_MAJOR_VERSION >= 3
-	return m;
+	return (m);
 #endif
-
 }
