@@ -11,7 +11,7 @@ modules = [
     Extension(
         'sysctl/_sysctl',
         sources=['sysctl/_sysctl.c'],
-        extra_compile_args=["-Wall"],
+        extra_compile_args=['-Wall', '-Wextra', '-pedantic', '-Werror'],
     )
 ]
 

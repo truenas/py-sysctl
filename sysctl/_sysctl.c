@@ -1,6 +1,7 @@
 #include <sys/param.h>
 #include <sys/sysctl.h>
 
+#define	PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <structmember.h>
 
@@ -515,7 +516,7 @@ static PyGetSetDef Sysctl_getseters[] = {
 	    "sysctl value", NULL },
 	{ "description", (getter)Sysctl_getdescr, (setter)NULL,
 	    "sysctl description", NULL },
-	{ NULL } /* Sentinel */
+	{ 0 } /* Sentinel */
 };
 
 static PyMemberDef Sysctl_members[] = {
@@ -527,7 +528,7 @@ static PyMemberDef Sysctl_members[] = {
 	{ "oid", T_OBJECT_EX, offsetof(Sysctl, oid), READONLY, "OID MIB" },
 	{ "type", T_UINT, offsetof(Sysctl, private.type), READONLY,
 	    "Data type of sysctl" },
-	{ NULL } /* Sentinel */
+	{ 0 } /* Sentinel */
 };
 
 static PyTypeObject SysctlType = {
@@ -712,10 +713,13 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 	return (list);
 }
 
+/* Cast through void (*) (void) to suppress -Wcast-function-type */
+#define	PyCFunction_Cast(f)	((PyCFunction)(void (*) (void))(f))
+
 static PyMethodDef SysctlMethods[] = {
-	{ "filter", (PyCFunction)sysctl_filter, METH_VARARGS | METH_KEYWORDS,
-	    "Sysctl all" },
-	{ "error_out", (PyCFunction)error_out, METH_NOARGS, NULL },
+	{ "filter", PyCFunction_Cast(sysctl_filter),
+	    METH_VARARGS | METH_KEYWORDS, "Sysctl all" },
+	{ "error_out", PyCFunction_Cast(error_out), METH_NOARGS, NULL },
 	{ 0 } /* Sentinel */
 };
 
