@@ -437,7 +437,6 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			oid[i] = (int)PyLong_AsLong(item);
 		}
 		if (sysctl(oid, (u_int)size, 0, 0, newval, newsize) == -1) {
-
 			switch (errno) {
 			case EOPNOTSUPP:
 				PyErr_SetString(
@@ -455,14 +454,12 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 				PyErr_SetFromErrno(PyExc_OSError);
 				break;
 			}
-
 			free(newval);
 			free(oid);
 			return (-1);
 		}
-		if (self->private.type != CTLTYPE_STRING) {
+		if (self->private.type != CTLTYPE_STRING)
 			free(newval);
-		}
 		free(oid);
 	}
 
@@ -639,7 +636,7 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 	u_int kind, ctltype;
 
 	if (!PyArg_ParseTupleAndKeywords(
-		args, kwds, "|zO", kwlist, &mib, &writable))
+	    args, kwds, "|zO", kwlist, &mib, &writable))
 		return (NULL);
 
 	name1[0] = CTL_SYSCTL;
