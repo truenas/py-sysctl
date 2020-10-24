@@ -1,11 +1,9 @@
 #include <sys/param.h>
 #include <sys/sysctl.h>
 
+#define	PY_SSIZE_T_CLEAN
 #include <Python.h>
-#include <err.h>
-#include <errno.h>
 #include <structmember.h>
-#include <sysexits.h>
 
 /*
  * CTL_SYSCTL first defined in FreeBSD 12.2
@@ -183,16 +181,27 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 	intlen = ctl_size[self->private.type];
 	oid = self->private.oid;
 	nlen = self->private.len;
-	p = NULL;
+	val = NULL;
 	len = 0;
-	while (sysctl(oid, nlen, p, &len, NULL, 0) != 0 || p == NULL) {
-		if (p != NULL && errno != 0 && errno != ENOMEM)
-			err(EX_OSERR, "%s: sysctl", __func__);
-		p = realloc(p, len);
-		if (p == NULL)
-			err(EX_OSERR, "%s: realloc", __func__);
+	while (sysctl(oid, nlen, val, &len, NULL, 0) != 0 || val == NULL) {
+		if (errno == EISDIR) {
+			free(val);
+			self->value = Py_None;
+			Py_INCREF(self->value);
+			Py_INCREF(self->value);
+			return (self->value);
+		}
+		if (val != NULL && errno != 0 && errno != ENOMEM) {
+			free(val);
+			return (PyErr_SetFromErrno(PyExc_OSError));
+		}
+		p = realloc(val, len);
+		if (p == NULL) {
+			free(val);
+			return (PyErr_SetFromErrno(PyExc_OSError));
+		}
+		val = p;
 	}
-	val = p;
 
 	switch (self->private.type) {
 	case CTLTYPE_STRING:
@@ -429,7 +438,6 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			oid[i] = (int)PyLong_AsLong(item);
 		}
 		if (sysctl(oid, (u_int)size, 0, 0, newval, newsize) == -1) {
-
 			switch (errno) {
 			case EOPNOTSUPP:
 				PyErr_SetString(
@@ -444,18 +452,15 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 				    "Type is unknown to this program");
 				break;
 			default:
-				PyErr_SetString(
-				    PyExc_TypeError, strerror(errno));
+				PyErr_SetFromErrno(PyExc_OSError);
 				break;
 			}
-
 			free(newval);
 			free(oid);
 			return (-1);
 		}
-		if (self->private.type != CTLTYPE_STRING) {
+		if (self->private.type != CTLTYPE_STRING)
 			free(newval);
-		}
 		free(oid);
 	}
 
@@ -470,7 +475,7 @@ Sysctl_getdescr(Sysctl *self, void *closure __unused)
 {
 	int qoid[CTL_MAXNAME + 2];
 	const int *oid;
-	char *descr;
+	char *descr, *p;
 	size_t len;
 	u_int nlen;
 
@@ -488,11 +493,16 @@ Sysctl_getdescr(Sysctl *self, void *closure __unused)
 	len = 0;
 	while (sysctl(qoid, nlen + 2, descr, &len, NULL, 0) != 0 ||
 	    descr == NULL) {
-		if (descr != NULL && errno != 0 && errno != ENOMEM)
-			err(EX_OSERR, "%s: sysctl", __func__);
-		descr = realloc(descr, len);
-		if (descr == NULL)
-			err(EX_OSERR, "%s: realloc", __func__);
+		if (descr != NULL && errno != 0 && errno != ENOMEM) {
+			free(descr);
+			return (PyErr_SetFromErrno(PyExc_OSError));
+		}
+		p = realloc(descr, len);
+		if (p == NULL) {
+			free(descr);
+			return (PyErr_SetFromErrno(PyExc_OSError));
+		}
+		descr = p;
 	}
 	self->description = PyUnicode_FromString(descr);
 	free(descr);
@@ -506,7 +516,7 @@ static PyGetSetDef Sysctl_getseters[] = {
 	    "sysctl value", NULL },
 	{ "description", (getter)Sysctl_getdescr, (setter)NULL,
 	    "sysctl description", NULL },
-	{ NULL } /* Sentinel */
+	{ 0 } /* Sentinel */
 };
 
 static PyMemberDef Sysctl_members[] = {
@@ -518,7 +528,7 @@ static PyMemberDef Sysctl_members[] = {
 	{ "oid", T_OBJECT_EX, offsetof(Sysctl, oid), READONLY, "OID MIB" },
 	{ "type", T_UINT, offsetof(Sysctl, private.type), READONLY,
 	    "Data type of sysctl" },
-	{ NULL } /* Sentinel */
+	{ 0 } /* Sentinel */
 };
 
 static PyTypeObject SysctlType = {
@@ -546,8 +556,10 @@ sysctl_type(const int *oid, u_int len, char *fmt)
 	memcpy(qoid + 2, oid, len * sizeof(int));
 
 	j = sizeof(buf);
-	if (sysctl(qoid, len + 2, buf, &j, 0, 0) == -1)
-		err(EX_OSERR, "%s: sysctl", __func__);
+	if (sysctl(qoid, len + 2, buf, &j, 0, 0) == -1) {
+		PyErr_SetFromErrno(PyExc_OSError);
+		return ((u_int)-1);
+	}
 
 	if (fmt)
 		strcpy(fmt, (char *)(buf + sizeof(u_int)));
@@ -572,7 +584,7 @@ new_sysctlobj(const int *oid, u_int nlen, u_int kind, const char *fmt)
 	len = sizeof(name);
 	rv = sysctl(qoid, nlen + 2, name, &len, 0, 0);
 	if (rv == -1)
-		err(EX_OSERR, "%s: sysctl", __func__);
+		return (PyErr_SetFromErrno(PyExc_OSError));
 
 	writable = PyBool_FromLong(kind & CTLFLAG_WR);
 	tuneable = PyBool_FromLong(kind & CTLFLAG_TUN);
@@ -598,12 +610,17 @@ new_sysctlobj(const int *oid, u_int nlen, u_int kind, const char *fmt)
 	self->private.len = nlen;
 	self->private.type = kind & CTLTYPE;
 	self->private.oid = malloc(nlenb);
-	if (self->private.oid == NULL)
-		err(EX_OSERR, "%s: malloc", __func__);
+	if (self->private.oid == NULL) {
+		Py_DECREF(selfobj);
+		return (PyErr_SetFromErrno(PyExc_OSError));
+	}
 	memcpy(self->private.oid, oid, nlenb);
 	self->private.fmt = strdup(fmt);
-	if (self->private.fmt == NULL)
-		err(EX_OSERR, "%s: strdup", __func__);
+	if (self->private.fmt == NULL) {
+		free(self->private.oid);
+		Py_DECREF(selfobj);
+		return (PyErr_SetFromErrno(PyExc_OSError));
+	}
 
 	return (selfobj);
 }
@@ -620,7 +637,7 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 	u_int kind, ctltype;
 
 	if (!PyArg_ParseTupleAndKeywords(
-		args, kwds, "|zO", kwlist, &mib, &writable))
+	    args, kwds, "|zO", kwlist, &mib, &writable))
 		return (NULL);
 
 	name1[0] = CTL_SYSCTL;
@@ -636,6 +653,10 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 		if (sysctlnametomib(mib, oid, &len) == -1)
 			return (list);
 		kind = sysctl_type(oid, (u_int)len, fmt);
+		if (kind == (u_int)-1) {
+			Py_DECREF(list);
+			return (NULL);
+		}
 		ctltype = kind & CTLTYPE;
 		if (ctltype == CTLTYPE_NODE) {
 			memcpy(name1 + 2, oid, len * sizeof(int));
@@ -664,6 +685,10 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 				return (list);
 
 		kind = sysctl_type(name2, (u_int)l2, fmt);
+		if (kind == (u_int)-1) {
+			Py_DECREF(list);
+			return (NULL);
+		}
 		ctltype = kind & CTLTYPE;
 		if ((PyObject *)writable == Py_True &&
 		    (kind & CTLFLAG_WR) == 0) {
@@ -688,10 +713,13 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 	return (list);
 }
 
+/* Cast through void (*) (void) to suppress -Wcast-function-type */
+#define	PyCFunction_Cast(f)	((PyCFunction)(void (*) (void))(f))
+
 static PyMethodDef SysctlMethods[] = {
-	{ "filter", (PyCFunction)sysctl_filter, METH_VARARGS | METH_KEYWORDS,
-	    "Sysctl all" },
-	{ "error_out", (PyCFunction)error_out, METH_NOARGS, NULL },
+	{ "filter", PyCFunction_Cast(sysctl_filter),
+	    METH_VARARGS | METH_KEYWORDS, "Sysctl all" },
+	{ "error_out", PyCFunction_Cast(error_out), METH_NOARGS, NULL },
 	{ 0 } /* Sentinel */
 };
 
