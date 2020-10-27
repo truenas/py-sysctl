@@ -167,6 +167,7 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 		[CTLTYPE_QUAD] = sizeof(int64_t),
 #endif
 	};
+	PyThreadState *save;
 	PyObject *value, *entry;
 	u_char *val, *p;
 	const int *oid;
@@ -181,11 +182,13 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 	intlen = ctl_size[self->private.type];
 	oid = self->private.oid;
 	nlen = self->private.len;
+	save = PyEval_SaveThread();
 	val = NULL;
 	len = 0;
 	while (sysctl(oid, nlen, val, &len, NULL, 0) != 0 || val == NULL) {
 		if (errno == EISDIR) {
 			free(val);
+			PyEval_RestoreThread(save);
 			self->value = Py_None;
 			Py_INCREF(self->value);
 			Py_INCREF(self->value);
@@ -193,15 +196,18 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 		}
 		if (val != NULL && errno != 0 && errno != ENOMEM) {
 			free(val);
+			PyEval_RestoreThread(save);
 			return (PyErr_SetFromErrno(PyExc_OSError));
 		}
 		p = realloc(val, len);
 		if (p == NULL) {
 			free(val);
+			PyEval_RestoreThread(save);
 			return (PyErr_SetFromErrno(PyExc_OSError));
 		}
 		val = p;
 	}
+	PyEval_RestoreThread(save);
 
 	switch (self->private.type) {
 	case CTLTYPE_STRING:
@@ -427,7 +433,7 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 	}
 
 	if (newval) {
-		int *oid;
+		int rv, *oid;
 		ssize_t size;
 
 		size = PyList_Size(self->oid);
@@ -437,7 +443,10 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			PyObject *item = PyList_GetItem(self->oid, i);
 			oid[i] = (int)PyLong_AsLong(item);
 		}
-		if (sysctl(oid, (u_int)size, 0, 0, newval, newsize) == -1) {
+		Py_BEGIN_ALLOW_THREADS
+		rv = sysctl(oid, (u_int)size, 0, 0, newval, newsize);
+		Py_END_ALLOW_THREADS
+		if (rv == -1) {
 			switch (errno) {
 			case EOPNOTSUPP:
 				PyErr_SetString(
