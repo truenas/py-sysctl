@@ -27,7 +27,7 @@ struct module_state {
 #define GETSTATE(m) ((struct module_state *)PyModule_GetState(m))
 PyMODINIT_FUNC PyInit__sysctl(void);
 #else
-#define GETSTATE(m) (&_state)
+#define GETSTATE(m) ((void)m, &_state)
 static struct module_state _state;
 PyMODINIT_FUNC init_sysctl(void);
 #endif
