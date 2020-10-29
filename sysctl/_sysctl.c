@@ -17,6 +17,13 @@
 #define	CTL_SYSCTL_OIDDESCR	5	/* OID's description */
 #endif
 
+/*
+ * Py_UNREACHABLE first defined in Python 3.7
+ */
+#ifndef Py_UNREACHABLE
+#define	Py_UNREACHABLE()	abort()
+#endif
+
 struct module_state {
 	PyObject *error;
 };
@@ -167,6 +174,7 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 		[CTLTYPE_QUAD] = sizeof(int64_t),
 #endif
 	};
+	PyThreadState *save;
 	PyObject *value, *entry;
 	u_char *val, *p;
 	const int *oid;
@@ -181,11 +189,13 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 	intlen = ctl_size[self->private.type];
 	oid = self->private.oid;
 	nlen = self->private.len;
+	save = PyEval_SaveThread();
 	val = NULL;
 	len = 0;
 	while (sysctl(oid, nlen, val, &len, NULL, 0) != 0 || val == NULL) {
 		if (errno == EISDIR) {
 			free(val);
+			PyEval_RestoreThread(save);
 			self->value = Py_None;
 			Py_INCREF(self->value);
 			Py_INCREF(self->value);
@@ -193,15 +203,18 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 		}
 		if (val != NULL && errno != 0 && errno != ENOMEM) {
 			free(val);
+			PyEval_RestoreThread(save);
 			return (PyErr_SetFromErrno(PyExc_OSError));
 		}
 		p = realloc(val, len);
 		if (p == NULL) {
 			free(val);
+			PyEval_RestoreThread(save);
 			return (PyErr_SetFromErrno(PyExc_OSError));
 		}
 		val = p;
 	}
+	PyEval_RestoreThread(save);
 
 	switch (self->private.type) {
 	case CTLTYPE_STRING:
@@ -427,7 +440,7 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 	}
 
 	if (newval) {
-		int *oid;
+		int rv, *oid;
 		ssize_t size;
 
 		size = PyList_Size(self->oid);
@@ -437,7 +450,10 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			PyObject *item = PyList_GetItem(self->oid, i);
 			oid[i] = (int)PyLong_AsLong(item);
 		}
-		if (sysctl(oid, (u_int)size, 0, 0, newval, newsize) == -1) {
+		Py_BEGIN_ALLOW_THREADS
+		rv = sysctl(oid, (u_int)size, 0, 0, newval, newsize);
+		Py_END_ALLOW_THREADS
+		if (rv == -1) {
 			switch (errno) {
 			case EOPNOTSUPP:
 				PyErr_SetString(
@@ -486,9 +502,11 @@ Sysctl_getdescr(Sysctl *self, void *closure __unused)
 
 	oid = self->private.oid;
 	nlen = self->private.len;
+
 	qoid[0] = CTL_SYSCTL;
 	qoid[1] = CTL_SYSCTL_OIDDESCR;
 	memcpy(qoid + 2, oid, nlen * sizeof(int));
+
 	descr = NULL;
 	len = 0;
 	while (sysctl(qoid, nlen + 2, descr, &len, NULL, 0) != 0 ||
@@ -556,10 +574,8 @@ sysctl_type(const int *oid, u_int len, char *fmt)
 	memcpy(qoid + 2, oid, len * sizeof(int));
 
 	j = sizeof(buf);
-	if (sysctl(qoid, len + 2, buf, &j, 0, 0) == -1) {
-		PyErr_SetFromErrno(PyExc_OSError);
+	if (sysctl(qoid, len + 2, buf, &j, 0, 0) == -1)
 		return ((u_int)-1);
-	}
 
 	if (fmt)
 		strcpy(fmt, (char *)(buf + sizeof(u_int)));
@@ -571,7 +587,7 @@ static PyObject *
 new_sysctlobj(const int *oid, u_int nlen, u_int kind, const char *fmt)
 {
 	char name[BUFSIZ] = { '\0' };
-	int qoid[CTL_MAXNAME + 2], rv;
+	int qoid[CTL_MAXNAME + 2];
 	size_t len, nlenb = nlen * sizeof(int);
 	PyObject *selfobj, *args, *kwargs, *oidobj, *oidentry, *writable,
 	    *tuneable;
@@ -582,8 +598,7 @@ new_sysctlobj(const int *oid, u_int nlen, u_int kind, const char *fmt)
 	memcpy(qoid + 2, oid, nlenb);
 
 	len = sizeof(name);
-	rv = sysctl(qoid, nlen + 2, name, &len, 0, 0);
-	if (rv == -1)
+	if (sysctl(qoid, nlen + 2, name, &len, 0, 0) == -1)
 		return (PyErr_SetFromErrno(PyExc_OSError));
 
 	writable = PyBool_FromLong(kind & CTLFLAG_WR);
@@ -628,17 +643,18 @@ new_sysctlobj(const int *oid, u_int nlen, u_int kind, const char *fmt)
 static PyObject *
 sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 {
-
-	int name1[22], name2[22], oid[CTL_MAXNAME];
-	size_t len = 0, l1 = 0, l2, i;
 	static char *kwlist[] = { "mib", "writable", NULL };
+	int name1[22], name2[22], oid[CTL_MAXNAME];
 	char *mib = NULL, fmt[BUFSIZ];
 	PyObject *list = NULL, *writable = NULL, *new = NULL;
+	size_t len = 0, l1 = 0, l2, i;
 	u_int kind, ctltype;
 
 	if (!PyArg_ParseTupleAndKeywords(
 	    args, kwds, "|zO", kwlist, &mib, &writable))
 		return (NULL);
+
+	list = PyList_New(0);
 
 	name1[0] = CTL_SYSCTL;
 #ifdef CTL_SYSCTL_NEXTNOSKIP
@@ -647,7 +663,6 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 	name1[1] = CTL_SYSCTL_NEXT;
 #endif
 
-	list = PyList_New(0);
 	if (mib != NULL && mib[0] != '\n' && strlen(mib) > 0) {
 		len = nitems(oid);
 		if (sysctlnametomib(mib, oid, &len) == -1)
@@ -655,7 +670,7 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 		kind = sysctl_type(oid, (u_int)len, fmt);
 		if (kind == (u_int)-1) {
 			Py_DECREF(list);
-			return (NULL);
+			return (PyErr_SetFromErrno(PyExc_OSError));
 		}
 		ctltype = kind & CTLTYPE;
 		if (ctltype == CTLTYPE_NODE) {
@@ -665,6 +680,7 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 			new = new_sysctlobj(oid, (u_int)len, kind, fmt);
 			PyList_Append(list, new);
 			Py_DECREF(new);
+			return (list);
 		}
 	} else {
 		name1[2] = CTL_KERN;
@@ -673,13 +689,15 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 
 	for (;;) {
 		l2 = sizeof(name2);
-		if (sysctl(name1, (u_int)l1, name2, &l2, NULL, 0) == -1 &&
-		    errno == ENOENT)
-			break;
+		if (sysctl(name1, (u_int)l1, name2, &l2, NULL, 0) == -1) {
+			if (errno == ENOENT)
+				return (list);
+			Py_DECREF(list);
+			return (PyErr_SetFromErrno(PyExc_OSError));
+		}
 		l2 /= sizeof(int);
 		if (l2 < len)
-			break;
-
+			return (list);
 		for (i = 0; i < len; i++)
 			if (name2[i] != oid[i])
 				return (list);
@@ -687,30 +705,21 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 		kind = sysctl_type(name2, (u_int)l2, fmt);
 		if (kind == (u_int)-1) {
 			Py_DECREF(list);
-			return (NULL);
+			return (PyErr_SetFromErrno(PyExc_OSError));
 		}
-		ctltype = kind & CTLTYPE;
-		if ((PyObject *)writable == Py_True &&
-		    (kind & CTLFLAG_WR) == 0) {
-			memcpy(name1 + 2, name2, l2 * sizeof(int));
-			l1 = l2 + 2;
-			continue;
-		} else if ((PyObject *)writable == Py_False &&
-		    (kind & CTLFLAG_WR) > 0) {
-			memcpy(name1 + 2, name2, l2 * sizeof(int));
-			l1 = l2 + 2;
-			continue;
-		}
+		if (writable == Py_True && (kind & CTLFLAG_WR) == 0)
+			goto next;
+		if (writable == Py_False && (kind & CTLFLAG_WR) != 0)
+			goto next;
 
 		new = new_sysctlobj(name2, (u_int)l2, kind, fmt);
 		PyList_Append(list, new);
 		Py_DECREF(new);
-
+next:
 		memcpy(name1 + 2, name2, l2 * sizeof(int));
 		l1 = l2 + 2;
 	}
-
-	return (list);
+	Py_UNREACHABLE();
 }
 
 /* Cast through void (*) (void) to suppress -Wcast-function-type */
