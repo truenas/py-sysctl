@@ -680,6 +680,7 @@ sysctl_filter(PyObject *self __unused, PyObject *args, PyObject *kwds)
 			new = new_sysctlobj(oid, (u_int)len, kind, fmt);
 			PyList_Append(list, new);
 			Py_DECREF(new);
+			return (list);
 		}
 	} else {
 		name1[2] = CTL_KERN;
