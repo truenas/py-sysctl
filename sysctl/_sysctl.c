@@ -369,9 +369,9 @@ convert_pyobject_str_to_char(PyObject *obj)
 
 	if (PyUnicode_CheckExact(obj)) {
 		str = PyUnicode_AsEncodedString(obj, "utf-8", "~E~");
-		if (str) {
+		if (str != NULL) {
 			bytes = PyBytes_AS_STRING(str);
-			Py_XDECREF(str);
+			Py_DECREF(str);
 		}
 	}
 
