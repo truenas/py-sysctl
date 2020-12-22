@@ -396,8 +396,8 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			PyErr_SetString(PyExc_TypeError, "Invalid type");
 			return (-1);
 		}
-		newval = malloc(sizeof(int));
 		newsize = sizeof(int);
+		newval = malloc(newsize);
 		*((int *)newval) = (int)PyLong_AsLong(value);
 		break;
 	case CTLTYPE_LONG:
@@ -407,8 +407,8 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			PyErr_SetString(PyExc_TypeError, "Invalid type");
 			return (-1);
 		}
-		newval = malloc(sizeof(long));
 		newsize = sizeof(long);
+		newval = malloc(newsize);
 		*((long *)newval) = PyLong_AsLong(value);
 		break;
 #ifdef CTLTYPE_S64
@@ -421,15 +421,15 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			PyErr_SetString(PyExc_TypeError, "Invalid type");
 			return (-1);
 		}
-		newval = malloc(sizeof(long long));
 		newsize = sizeof(long long);
+		newval = malloc(newsize);
 		*((long long *)newval) = PyLong_AsLongLong(value);
 		break;
 	case CTLTYPE_STRING:
 		newvalstr = convert_pyobject_str_to_char(value);
 		if (newvalstr) {
-			newval = newvalstr;
 			newsize = strlen(newvalstr);
+			newval = newvalstr;
 		} else {
 			PyErr_SetString(PyExc_TypeError, "Invalid type");
 			return (-1);
