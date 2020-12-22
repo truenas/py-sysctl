@@ -480,7 +480,7 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 		free(oid);
 	}
 
-	Py_DECREF(self->value);
+	Py_XDECREF(self->value);
 	Py_INCREF(value);
 	self->value = value;
 	return (0);
