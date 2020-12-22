@@ -435,6 +435,15 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			return (-1);
 		}
 		break;
+	case CTLTYPE_OPAQUE:
+		if (!PyByteArray_Check(value)) {
+			PyErr_SetString(PyExc_TypeError, "Invalid type");
+			return (-1);
+		}
+		newsize = PyByteArray_Size(value);
+		newval = malloc(newsize);
+		memcpy(newval, PyByteArray_AsString(value), newsize);
+		break;
 	default:
 		break;
 	}
