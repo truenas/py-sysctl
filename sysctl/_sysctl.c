@@ -369,9 +369,9 @@ convert_pyobject_str_to_char(PyObject *obj)
 
 	if (PyUnicode_CheckExact(obj)) {
 		str = PyUnicode_AsEncodedString(obj, "utf-8", "~E~");
-		if (str) {
+		if (str != NULL) {
 			bytes = PyBytes_AS_STRING(str);
-			Py_XDECREF(str);
+			Py_DECREF(str);
 		}
 	}
 
@@ -396,8 +396,8 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			PyErr_SetString(PyExc_TypeError, "Invalid type");
 			return (-1);
 		}
-		newval = malloc(sizeof(int));
 		newsize = sizeof(int);
+		newval = malloc(newsize);
 		*((int *)newval) = (int)PyLong_AsLong(value);
 		break;
 	case CTLTYPE_LONG:
@@ -407,8 +407,8 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			PyErr_SetString(PyExc_TypeError, "Invalid type");
 			return (-1);
 		}
-		newval = malloc(sizeof(long));
 		newsize = sizeof(long);
+		newval = malloc(newsize);
 		*((long *)newval) = PyLong_AsLong(value);
 		break;
 #ifdef CTLTYPE_S64
@@ -421,19 +421,28 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 			PyErr_SetString(PyExc_TypeError, "Invalid type");
 			return (-1);
 		}
-		newval = malloc(sizeof(long long));
 		newsize = sizeof(long long);
+		newval = malloc(newsize);
 		*((long long *)newval) = PyLong_AsLongLong(value);
 		break;
 	case CTLTYPE_STRING:
 		newvalstr = convert_pyobject_str_to_char(value);
 		if (newvalstr) {
-			newval = newvalstr;
 			newsize = strlen(newvalstr);
+			newval = newvalstr;
 		} else {
 			PyErr_SetString(PyExc_TypeError, "Invalid type");
 			return (-1);
 		}
+		break;
+	case CTLTYPE_OPAQUE:
+		if (!PyByteArray_Check(value)) {
+			PyErr_SetString(PyExc_TypeError, "Invalid type");
+			return (-1);
+		}
+		newsize = PyByteArray_Size(value);
+		newval = malloc(newsize);
+		memcpy(newval, PyByteArray_AsString(value), newsize);
 		break;
 	default:
 		break;
@@ -480,7 +489,7 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 		free(oid);
 	}
 
-	Py_DECREF(self->value);
+	Py_XDECREF(self->value);
 	Py_INCREF(value);
 	self->value = value;
 	return (0);
