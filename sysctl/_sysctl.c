@@ -206,7 +206,7 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 			PyEval_RestoreThread(save);
 			return (PyErr_SetFromErrno(PyExc_OSError));
 		}
-		p = realloc(val, len);
+		p = realloc(val, len + 1);
 		if (p == NULL) {
 			free(val);
 			PyEval_RestoreThread(save);
@@ -215,10 +215,10 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 		val = p;
 	}
 	PyEval_RestoreThread(save);
+	val[len] = '\0';
 
 	switch (self->private.type) {
 	case CTLTYPE_STRING:
-		val[len - 1] = '\0';
 		value = PyUnicode_FromString((const char *)val);
 		break;
 	case CTLTYPE_INT:
