@@ -1,3 +1,6 @@
 *.pyc
-build/*
+build/
+dist/
 *.*.sw[a-z]
+*.egg-info/
+venv*/

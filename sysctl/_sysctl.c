@@ -18,6 +18,23 @@
 #endif
 
 /*
+ * Tunable sysctls seem to be a FreeBSD-only thing.
+ * Since this is a flag, ANDed with the type bitset, we can default it to zero
+ * on platforms that don't support this concept.
+ */
+#ifndef CTLFLAG_TUN
+#  define CTLFLAG_TUN (0)
+#endif
+
+/*
+ * MacOS doesn't appear to have the 'nitems' macro, so reimplement
+ * it if it isn't defined.
+ */
+#ifndef nitems
+#  define nitems(x) (sizeof(x)/sizeof(x[0]))
+#endif
+
+/*
  * Py_UNREACHABLE first defined in Python 3.7
  */
 #ifndef Py_UNREACHABLE
@@ -164,9 +181,15 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 {
 	static const size_t ctl_size[CTLTYPE + 1] = {
 		[CTLTYPE_INT] = sizeof(int),
+#ifdef CTLTYPE_UINT
 		[CTLTYPE_UINT] = sizeof(u_int),
+#endif
+#ifdef CTLTYPE_LONG
 		[CTLTYPE_LONG] = sizeof(long),
+#endif
+#ifdef CTLTYPE_ULONG
 		[CTLTYPE_ULONG] = sizeof(u_long),
+#endif
 #ifdef CTLTYPE_S64
 		[CTLTYPE_S64] = sizeof(int64_t),
 		[CTLTYPE_U64] = sizeof(int64_t),
@@ -177,7 +200,7 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 	PyThreadState *save;
 	PyObject *value, *entry;
 	u_char *val, *p;
-	const int *oid;
+	int *oid;
 	size_t len, intlen;
 	u_int nlen;
 
@@ -237,6 +260,7 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 			value = PyLong_FromLong(*valp);
 		}
 		break;
+#ifdef CTLTYPE_UINT
 	case CTLTYPE_UINT:
 		if (len > intlen) {
 			value = PyList_New(0);
@@ -253,6 +277,8 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 			value = PyLong_FromLong(*valp);
 		}
 		break;
+#endif
+#ifdef CTLTYPE_LONG
 	case CTLTYPE_LONG:
 		if (len > intlen) {
 			value = PyList_New(0);
@@ -269,6 +295,8 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 			value = PyLong_FromLong(*valp);
 		}
 		break;
+#endif
+#ifdef CTLTYPE_ULONG
 	case CTLTYPE_ULONG:
 		if (len > intlen) {
 			value = PyList_New(0);
@@ -285,6 +313,7 @@ Sysctl_getvalue(Sysctl *self, void *closure __unused)
 			value = PyLong_FromUnsignedLong(*valp);
 		}
 		break;
+#endif
 #ifdef CTLTYPE_S64
 	case CTLTYPE_S64:
 		if (len > intlen) {
@@ -391,7 +420,9 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 	}
 	switch (self->private.type) {
 	case CTLTYPE_INT:
+#ifdef CTLTYPE_UINT
 	case CTLTYPE_UINT:
+#endif
 		if (value->ob_type != &PyInt_Type) {
 			PyErr_SetString(PyExc_TypeError, "Invalid type");
 			return (-1);
@@ -400,8 +431,13 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 		newval = malloc(newsize);
 		*((int *)newval) = (int)PyLong_AsLong(value);
 		break;
+#ifdef CTLTYPE_LONG
 	case CTLTYPE_LONG:
+#endif
+#ifdef CTLTYPE_ULONG
 	case CTLTYPE_ULONG:
+#endif
+#if defined(CTLTYPE_LONG) || defined(CTLTYPE_ULONG)
 		if (value->ob_type != &PyLong_Type &&
 		    value->ob_type != &PyInt_Type) {
 			PyErr_SetString(PyExc_TypeError, "Invalid type");
@@ -411,6 +447,7 @@ Sysctl_setvalue(Sysctl *self, PyObject *value, void *closure __unused)
 		newval = malloc(newsize);
 		*((long *)newval) = PyLong_AsLong(value);
 		break;
+#endif
 #ifdef CTLTYPE_S64
 	case CTLTYPE_S64:
 	case CTLTYPE_U64:
@@ -808,9 +845,15 @@ init_sysctl(void)
 	PyModule_AddIntConstant(m, "CTLTYPE_STRING", CTLTYPE_STRING);
 	PyModule_AddIntConstant(m, "CTLTYPE_OPAQUE", CTLTYPE_OPAQUE);
 	PyModule_AddIntConstant(m, "CTLTYPE_STRUCT", CTLTYPE_STRUCT);
+#ifdef CTLTYPE_UINT
 	PyModule_AddIntConstant(m, "CTLTYPE_UINT", CTLTYPE_UINT);
+#endif
+#ifdef CTLTYPE_LONG
 	PyModule_AddIntConstant(m, "CTLTYPE_LONG", CTLTYPE_LONG);
+#endif
+#ifdef CTLTYPE_ULONG
 	PyModule_AddIntConstant(m, "CTLTYPE_ULONG", CTLTYPE_ULONG);
+#endif
 #ifdef CTLTYPE_S64
 	PyModule_AddIntConstant(m, "CTLTYPE_S64", CTLTYPE_S64);
 	PyModule_AddIntConstant(m, "CTLTYPE_U64", CTLTYPE_U64);
